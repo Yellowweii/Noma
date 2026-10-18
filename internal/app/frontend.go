@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -67,6 +68,18 @@ func (s *Server) frontendAPI(ctx context.Context, w http.ResponseWriter, r *http
 		return
 	}
 	if strings.HasPrefix(path, "/home/") || strings.HasPrefix(path, "/ha/") || strings.HasPrefix(path, "/settings/home-assistant") {
+		if !sess.haAuthorized {
+			if r.Method == "GET" && path == "/home/status" {
+				writeJSON(w, 200, map[string]any{"configured": false, "ha_reachable": false, "message": "请在 Home Assistant 设置中授权本地设备访问"})
+				return
+			}
+			if r.Method == "GET" && path == "/ha/connections" {
+				writeJSON(w, 200, map[string]any{"available": true, "prepared": false, "authorized": false, "ha_reachable": false, "can_authorize": false, "diagnostic": "请在 Home Assistant 设置中授权本地设备访问"})
+				return
+			}
+			fail(w, 403, "请在 Home Assistant 设置中授权本地设备访问")
+			return
+		}
 		s.frontendHA(ctx, w, r, path)
 		return
 	}
@@ -79,8 +92,11 @@ func (s *Server) frontendAPI(ctx context.Context, w http.ResponseWriter, r *http
 		if settings == nil {
 			settings = map[string]any{}
 		}
-		settings["home_assistant_configured"] = s.ha.Configured()
-		settings["allowed_device_ids"] = s.ha.Allowed()
+		settings["home_assistant_configured"] = sess.haAuthorized && s.ha.Configured()
+		settings["allowed_device_ids"] = []string{}
+		if sess.haAuthorized {
+			settings["allowed_device_ids"] = s.ha.Allowed()
+		}
 		settings["blocked_device_ids"] = []string{}
 		writeJSON(w, 200, settings)
 		return
@@ -128,6 +144,10 @@ func (s *Server) frontendAuth(ctx context.Context, w http.ResponseWriter, r *htt
 			cloudFailure(w, err)
 			return true
 		}
+		if sess.expires.IsZero() && !s.saveSession(w, sess) {
+			s.cloud.Logout(ctx, account)
+			return true
+		}
 		if sess.account != nil {
 			s.cloud.Logout(ctx, sess.account)
 		}
@@ -166,7 +186,7 @@ func (s *Server) frontendAuth(ctx context.Context, w http.ResponseWriter, r *htt
 			s.cloud.Logout(ctx, sess.account)
 		}
 		sess.account, sess.userID, sess.turns = nil, "", map[string]cachedTurn{}
-		// Keep the household unlock cookie, matching the original account logout flow.
+		// Keep this browser's separately granted household access.
 		writeJSON(w, 200, map[string]bool{"ok": true})
 	default:
 		fail(w, 404, "认证接口不存在")
@@ -188,9 +208,13 @@ func (s *Server) forwardCloud(ctx context.Context, w http.ResponseWriter, r *htt
 		return
 	}
 	defer response.Body.Close()
+	s.streamCloud(w, response, account == nil)
+}
+
+func (s *Server) streamCloud(w http.ResponseWriter, response *http.Response, anonymous bool) {
 	w.Header().Set("Content-Type", response.Header.Get("Content-Type"))
 	// Preserve the signed anonymous quota identity, but never cloud login cookies.
-	if account == nil {
+	if anonymous {
 		for _, cookie := range response.Cookies() {
 			if cookie.Name == "noma_guest_id" {
 				cookie.Domain = ""
@@ -274,6 +298,27 @@ func (s *Server) frontendSend(ctx context.Context, w http.ResponseWriter, r *htt
 		ReplaceAssistantID string `json:"replace_assistant_id"`
 	}
 	if !decode(w, r, &input) {
+		return
+	}
+	if !idPattern.MatchString(input.RequestID) || len(input.Content) == 0 || len(input.Content) > 16000 || !idPattern.MatchString(sessionID) {
+		fail(w, 400, "请求 ID、会话 ID 或消息长度无效")
+		return
+	}
+	if !sess.haAuthorized {
+		// This dedicated cloud route must disable HA tools AND context reads.
+		// Never forward to the legacy chat route, which can execute cloud HA.
+		body, _ := json.Marshal(input)
+		response, err := s.cloud.Forward(ctx, sess.account, "POST", "/api/v1/local/chat/sessions/"+url.PathEscape(sessionID)+"/messages", "application/json", "", bytes.NewReader(body))
+		if err != nil {
+			cloudFailure(w, err)
+			return
+		}
+		defer response.Body.Close()
+		if response.StatusCode == 404 || response.StatusCode == 405 || response.StatusCode == 501 {
+			fail(w, 503, "云端纯聊天接口尚未就绪，请先使用游客聊天")
+			return
+		}
+		s.streamCloud(w, response, false)
 		return
 	}
 	result := s.processTurn(ctx, sess, turnInput{RequestID: input.RequestID, SessionID: sessionID, Message: input.Content, Regenerate: input.Regenerate, ReplaceAssistantID: input.ReplaceAssistantID})

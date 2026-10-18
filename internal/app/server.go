@@ -33,11 +33,12 @@ type cachedTurn struct {
 	status   int
 }
 type session struct {
-	mu      sync.Mutex
-	expires time.Time
-	account *cloud.Account
-	turns   map[string]cachedTurn
-	userID  string
+	mu           sync.Mutex
+	expires      time.Time
+	account      *cloud.Account
+	turns        map[string]cachedTurn
+	userID       string
+	haAuthorized bool
 }
 type Server struct {
 	cfg            Config
@@ -174,7 +175,6 @@ func (s *Server) unlock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
 	now := time.Now()
 	for key, v := range s.unlockAttempts {
@@ -188,19 +188,40 @@ func (s *Server) unlock(w http.ResponseWriter, r *http.Request) {
 	}
 	a.count++
 	if len(s.unlockAttempts) >= 1024 {
+		s.mu.Unlock()
 		fail(w, 429, "本地登录请求过多")
 		return
 	}
 	s.unlockAttempts[ip] = a
 	if a.count > 10 {
+		s.mu.Unlock()
 		fail(w, 429, "解锁尝试过多，请一分钟后重试")
 		return
 	}
 	left, right := sha256.Sum256([]byte(req.Key)), sha256.Sum256([]byte(s.cfg.AccessKey))
 	if subtle.ConstantTimeCompare(left[:], right[:]) != 1 {
+		s.mu.Unlock()
 		fail(w, 401, "本地访问密钥不正确")
 		return
 	}
+	s.mu.Unlock()
+	if sess := s.getSession(r); sess != nil {
+		sess.mu.Lock()
+		sess.haAuthorized = true
+		sess.mu.Unlock()
+		writeJSON(w, 200, map[string]bool{"ok": true})
+		return
+	}
+	if s.saveSession(w, &session{haAuthorized: true, turns: map[string]cachedTurn{}}) {
+		writeJSON(w, 200, map[string]bool{"ok": true})
+	}
+}
+
+// Cloud login creates a browser session; the household key only adds HA access.
+func (s *Server) saveSession(w http.ResponseWriter, sess *session) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now()
 	for key, sess := range s.sessions {
 		if now.After(sess.expires) {
 			delete(s.sessions, key)
@@ -208,13 +229,14 @@ func (s *Server) unlock(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(s.sessions) >= 64 {
 		fail(w, 429, "本地会话过多，请稍后重试")
-		return
+		return false
 	}
 	id := randomID()
-	s.sessions[id] = &session{expires: now.Add(sessionLifetime), turns: map[string]cachedTurn{}}
+	sess.expires = now.Add(sessionLifetime)
+	s.sessions[id] = sess
 	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: id, Path: "/", HttpOnly: true, Secure: s.cfg.SecureCookie,
 		SameSite: http.SameSiteStrictMode, MaxAge: int(sessionLifetime.Seconds())})
-	writeJSON(w, 200, map[string]bool{"ok": true})
+	return true
 }
 
 func (s *Server) api(w http.ResponseWriter, r *http.Request) {
@@ -228,6 +250,15 @@ func (s *Server) api(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sess := s.getSession(r)
+	if sess == nil && strings.HasPrefix(path, "/api/v1/") {
+		// Public guest routes need no persisted session. Successful cloud login
+		// persists this session before sending its response.
+		sess = &session{turns: map[string]cachedTurn{}}
+	}
+	if path == "/api/local/status" && r.Method == "GET" && sess == nil {
+		writeJSON(w, 200, map[string]bool{"ha_authorized": false, "logged_in": false})
+		return
+	}
 	if sess == nil {
 		fail(w, 401, "请先解锁本地实例")
 		return
@@ -241,9 +272,17 @@ func (s *Server) api(w http.ResponseWriter, r *http.Request) {
 		s.frontendAPI(ctx, w, r, sess)
 		return
 	}
+	if !sess.haAuthorized {
+		if path == "/api/local/status" && r.Method == "GET" {
+			writeJSON(w, 200, map[string]bool{"ha_authorized": false, "logged_in": sess.account != nil})
+			return
+		}
+		fail(w, 403, "请在 Home Assistant 设置中授权本地设备访问")
+		return
+	}
 	switch {
 	case path == "/api/local/status" && r.Method == "GET":
-		writeJSON(w, 200, map[string]any{"cloud_url": s.cfg.CloudURL, "logged_in": sess.account != nil,
+		writeJSON(w, 200, map[string]any{"ha_authorized": true, "cloud_url": s.cfg.CloudURL, "logged_in": sess.account != nil,
 			"ha_configured": s.ha.Configured(), "ha_url": s.cfg.HAURL, "allowed_entities": s.ha.Allowed(), "protocol_version": "1"})
 	case path == "/api/local/auth/send-code" && r.Method == "POST":
 		var req struct {

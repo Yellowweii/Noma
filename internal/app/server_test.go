@@ -24,12 +24,13 @@ const callID = "tool-call-00000000001"
 
 type fixtureOptions struct {
 	unsupported, expired, wrongBinding, failResults, duplicate, shortToken bool
+	plainChatUnavailable                                                   bool
 	entity                                                                 string
 }
 type fixture struct {
-	local                               *httptest.Server
-	client                              *http.Client
-	controls, turns, results, refreshes atomic.Int32
+	local                                           *httptest.Server
+	client                                          *http.Client
+	controls, turns, results, refreshes, haRequests atomic.Int32
 }
 
 func newFixture(t *testing.T, options fixtureOptions) *fixture {
@@ -39,6 +40,7 @@ func newFixture(t *testing.T, options fixtureOptions) *fixture {
 		options.entity = "light.allowed"
 	}
 	ha := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		f.haRequests.Add(1)
 		if r.Header.Get("Authorization") != "Bearer test-ha-secret" {
 			t.Error("HA did not receive its own token")
 		}
@@ -83,6 +85,34 @@ func newFixture(t *testing.T, options fixtureOptions) *fixture {
 			t.Error("cloud bearer token missing")
 		}
 		switch r.URL.Path {
+		case "/api/v1/local/chat/sessions/" + sessionID + "/messages":
+			if options.plainChatUnavailable {
+				http.NotFound(w, r)
+				return
+			}
+			var in struct {
+				Content            string `json:"content"`
+				RequestID          string `json:"request_id"`
+				Regenerate         bool   `json:"regenerate"`
+				ReplaceAssistantID string `json:"replace_assistant_id"`
+			}
+			if err := json.Unmarshal(body, &in); err != nil || in.Content != "你好" || in.RequestID != requestID || !in.Regenerate || in.ReplaceAssistantID != "assistant-test" || r.URL.RawQuery != "" {
+				t.Errorf("invalid plain chat request: %s", body)
+			}
+			w.Header().Set("Content-Type", "text/event-stream")
+			http.SetCookie(w, &http.Cookie{Name: "noma_refresh_token", Value: "test-refresh-token"})
+			_, _ = w.Write([]byte("event: message\ndata: {\"type\":\"token\",\"content\":\"你好\"}\n\nevent: message\ndata: {\"type\":\"done\"}\n\n"))
+		case "/api/v1/guest/chat", "/api/v1/guest/chat/quota":
+			if r.Header.Get("Authorization") != "" || strings.Contains(r.Header.Get("Cookie"), cookieName) {
+				t.Error("guest request received account or household credentials")
+			}
+			http.SetCookie(w, &http.Cookie{Name: "noma_guest_id", Value: "test-guest-quota", Path: "/", HttpOnly: true})
+			if r.Method == "GET" {
+				writeJSON(w, 200, map[string]any{"quota": map[string]int{"remaining": 3}})
+				return
+			}
+			w.Header().Set("Content-Type", "text/event-stream")
+			_, _ = w.Write([]byte("data: {\"type\":\"token\",\"content\":\"你好\"}\n\ndata: {\"type\":\"done\"}\n\n"))
 		case "/api/v1/auth/otp/send":
 			writeJSON(w, 200, map[string]bool{"ok": true})
 		case "/api/v1/auth/otp/verify":
@@ -289,8 +319,8 @@ func TestRefreshCredentialsStayOnBackendAndLogoutRevokesLocalSession(t *testing.
 	if status != 200 {
 		t.Fatal("logout failed")
 	}
-	status, _, _ = f.request(t, "GET", "/api/local/status", nil)
-	if status != 401 {
+	status, body, _ = f.request(t, "GET", "/api/local/status", nil)
+	if status != 200 || !strings.Contains(body, `"ha_authorized":false`) || strings.Contains(body, "ha_url") {
 		t.Fatal("local session survived logout")
 	}
 }

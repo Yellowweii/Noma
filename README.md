@@ -23,13 +23,15 @@
 - 云端 JWT / refresh Cookie 留在后端。前端原 access_token 变为会话存在标记；实际鉴权依赖本地 HttpOnly Cookie。
 - 原对话发送进入 Local 工具循环，并返回原页面接收的 SSE 事件格式。当前最终文本一次返回，尚未实现逐 token 输出。
 - HA 设置沿用原设置布局，连接区域改为局域网连接和云端协议检测。
-- 原页面挂载前先解锁本地实例；云端账号继续通过原登录页登录。
+- 页面和游客聊天可直接使用；云端账号继续通过原登录页登录。只有查看、连接和控制本地设备时，才需要在设置 → Home Assistant 中输入本地访问密钥授权。
 
 ## 当前状态
 
 原 Next.js 页面已通过生产构建，保留的 40 项 HA 连接 / 设备控制前端测试通过。后端覆盖云端代理、原 API 形状适配、本地 HA 控制与远程工具往返。
 
 **生产云端尚未实现 Local turn 协议，真实 AI 控制仍需云端对接。** 页面复用不代表已经完成生产联调。对话发送不会回退到云端 FRP 执行路径；账号、记忆和会话管理沿用现有云端 API。
+
+游客聊天沿用云端 `/guest/chat`，无需本地密钥。登录后未授权设备时，消息发送调用专用云端纯聊天接口；授权后使用 Local 工具协议，不会回退到可能访问云端 HA 的旧聊天路径。两个云端接口都需要单独对接，当前可先使用游客聊天；本地侧已通过模拟云端验证。
 
 本地初版支持 `light`、`switch`、`input_boolean` 的 `turn_on` / `turn_off`；灯光还支持经过校验的亮度、RGB / RGBW / RGBWW、白光和色温参数。其他设备目前只提供授权状态读取；原页面按后端 `supported_actions` 展示可用操作。语音与 Clerk 登录入口已保留并提供代理，但真实流程尚未联调。
 
@@ -43,7 +45,7 @@ docker compose up -d --build
 
 PowerShell：`Copy-Item .env.example .env`。示例占位密钥会被拒绝。可用 `python -c "import secrets; print(secrets.token_urlsafe(32))"` 生成密钥。
 
-访问 [http://localhost:3000](http://localhost:3000)，解锁后进入原 Noma 页面。Compose 启动 `noma-web` 和 `noma-local`，只有 Go 网关对外映射端口。
+访问 [http://localhost:3000](http://localhost:3000)，直接进入原 Noma 页面并使用游客聊天。需要本地设备能力时，进入设置 → Home Assistant，使用 `NOMA_LOCAL_ACCESS_KEY` 授权当前浏览器。此密钥不是云端登录密码，也不是 HA Token。Compose 启动 `noma-web` 和 `noma-local`，只有 Go 网关对外映射端口。
 
 | 配置 | 说明 |
 | --- | --- |

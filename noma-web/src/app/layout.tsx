@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, Noto_Sans_SC } from "next/font/google";
 import { SITE_URL } from "@/lib/seo";
-import { LocalAccessGate } from "@/components/local/LocalAccessGate";
 import "./globals.css";
 
 const inter = Inter({
@@ -42,7 +41,7 @@ export default function RootLayout({
       className={`h-full overflow-hidden ${inter.variable} ${notoSansSC.variable}`}
     >
       <body className="h-full overflow-hidden font-sans antialiased">
-        <LocalAccessGate>{children}</LocalAccessGate>
+        {children}
       </body>
     </html>
   );

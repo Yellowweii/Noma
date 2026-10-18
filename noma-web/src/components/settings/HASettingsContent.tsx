@@ -5,10 +5,17 @@ import { Check, CircleAlert, Loader2, RefreshCw } from "lucide-react";
 import { SettingsContentLayout } from "@/components/settings/SettingsContentLayout";
 import { FeedbackButton } from "@/components/settings/FeedbackButton";
 import { refreshHAConnectionSnapshot } from "@/lib/haConnectionSnapshot";
+import { LocalAccessGate } from "@/components/local/LocalAccessGate";
 
 type LocalStatus = { ha_url: string; ha_configured: boolean; allowed_entities: string[] };
 
 export function HASettingsContent() {
+  return <SettingsContentLayout title="Home Assistant" description="通过局域网连接你的 Home Assistant，查看家庭状态并控制已授权的设备" decorative footer={<FeedbackButton>反馈</FeedbackButton>}>
+    <LocalAccessGate><HAConnectionDetails /></LocalAccessGate>
+  </SettingsContentLayout>;
+}
+
+function HAConnectionDetails() {
   const [status, setStatus] = useState<LocalStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -20,8 +27,9 @@ export function HASettingsContent() {
     setLoading(true); setError(""); setCloudNote("");
     try {
       const response = await fetch("/api/local/status", { cache: "no-store", credentials: "same-origin" });
-      if (!response.ok) throw new Error("本地实例已锁定，请刷新页面重新解锁");
-      setStatus(await response.json());
+      const body = await response.json();
+      if (!response.ok || !body.ha_authorized) throw new Error("本地设备授权已过期，请刷新后重新授权");
+      setStatus(body);
       const [home, cloud] = await Promise.allSettled([
         refreshHAConnectionSnapshot(),
         fetch("/api/local/cloud/capabilities", { cache: "no-store", credentials: "same-origin" }).then(async response => {
@@ -40,8 +48,7 @@ export function HASettingsContent() {
 
   useEffect(() => { void check(); }, []);
 
-  return <SettingsContentLayout title="Home Assistant" description="通过局域网连接你的 Home Assistant，查看家庭状态并控制已授权的设备" decorative footer={<FeedbackButton>反馈</FeedbackButton>}>
-    <div className="max-w-2xl space-y-6">
+  return <div className="max-w-2xl space-y-6">
       <section className="rounded-xl border border-noma-border bg-white p-6">
         <div className="flex items-center justify-between gap-4">
           <h3 className="text-base font-semibold text-noma-primary">本地连接</h3>
@@ -62,6 +69,5 @@ export function HASettingsContent() {
       </section>
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
       <button type="button" onClick={() => void check()} disabled={loading} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-full bg-noma-action px-6 py-2.5 text-sm font-medium text-white enabled:hover:bg-noma-action-hover disabled:opacity-50"><RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />重新检测</button>
-    </div>
-  </SettingsContentLayout>;
+    </div>;
 }

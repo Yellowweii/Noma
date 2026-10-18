@@ -12,7 +12,7 @@ export default async function AgentLayout({
   children: React.ReactNode;
 }) {
   const cookieStore = await cookies();
-  const initiallyGuest = !cookieStore.get("noma_refresh_token")?.value;
+  const initiallyGuest = !cookieStore.get("noma_local_session")?.value;
   const ssrNewChatIntent = isNewChatIntentValue(
     cookieStore.get(initiallyGuest ? GUEST_NEW_CHAT_INTENT_COOKIE : NEW_CHAT_INTENT_COOKIE)?.value,
   );

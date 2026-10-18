@@ -17,7 +17,19 @@
 
 浏览器仍请求原 `/api/v1` 路径，本地网关维护方法 / 路径白名单：账号、记忆和会话管理转发云端，`/home/*` 与 `/ha/*` 由本地处理。HA 授权 / FRP 设置不转发云端。
 
-账号登录 / refresh 响应中的 `access_token` 替换为 `noma-local-cookie-session` 标记，不是云端 JWT，不能脱离本地 HttpOnly Cookie 使用。账号退出清除后端云端凭证，保留家庭解锁状态；`/api/local/auth/logout` 可进一步锁定实例。
+账号登录 / refresh 响应中的 `access_token` 替换为 `noma-local-cookie-session` 标记，不是云端 JWT，不能脱离本地 HttpOnly Cookie 使用。云端登录无需本地密钥，登录成功创建仅持有该账号凭证的浏览器会话；`POST /api/local/unlock` 校验本地密钥后给当前会话追加 HA 权限，保留云端登录身份。账号退出清除后端云端凭证，保留家庭授权状态；`/api/local/auth/logout` 可进一步锁定实例。
+
+`GET /api/local/status` 无需登录，未授权时仅返回 `ha_authorized: false` 和 `logged_in`，不返回 HA 地址或实体列表。未授权会话的 `/home/status`、`/ha/connections` 只返回未连接状态，`/settings` 隐藏设备授权列表；设备读取、控制、Local 工具轮次均拒绝。游客聊天及额度、语音白名单接口不需要本地会话，仍执行同源与 Host 校验，且沿用云端签名匿名额度 Cookie。
+
+未授权设备的登录用户发送消息时，仅调用下述专用纯聊天接口。云端缺失接口时返回明确的 503 提示使用游客聊天；不转发旧 `/chat/.../messages` 以绕回云端 HA 执行。
+
+### 登录后的纯聊天（云端待实现）
+
+`POST /api/v1/local/chat/sessions/{session_id}/messages`，使用后端持有的云端 Bearer 凭证，body 为 `{ "content": "你好", "request_id": "...", "regenerate": false, "replace_assistant_id": "..." }`。网关校验消息长度和请求 / 会话 ID，仅发送这些字段，不转发查询参数、本地 Cookie、HA 地址、实体或密钥。
+
+云端必须沿用账号归属、额度、历史、记忆和 SSE `meta` / `token` / `done` 事件，同时禁止 HA Client 注入、默认 HA Client 回退、设备目录 / 状态读取与设备工具执行。仅令请求中的 HA 指针为空不足以保证此边界。`request_id` 用于纯聊天请求去重，重生成保持原消息归属校验。此接口不得根据消息文本或查询参数重新开启设备工具。
+
+本地只透传此接口的 SSE 正文和状态码，不向浏览器转发云端账号 Cookie。404 / 405 / 501 映射为 503 并提示使用游客聊天；429 及其额度响应保留，不重试写请求，也不回退到旧聊天或云端 HA 路径。当前 Public 已实现此适配和模拟云端往返测试，Private 实现与生产部署需要单独进行。
 
 原消息发送路径适配下述 Local turn 协议，本地工具循环完成后返回 SSE `meta` / `token` / `done` 事件。当前最终回复一次返回，非逐 token 输出。支持传递 `regenerate` / `replace_assistant_id`，云端需要保持原重生成规则；最终 turn 响应可附带 `message_id` / `assistant_message_id`，供原页面与记忆回写状态关联。
 
