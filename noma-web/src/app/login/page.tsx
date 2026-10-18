@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, Suspense } from "react";
-import { ArrowLeft, Loader2, Mail, ShieldCheck, Smartphone } from "lucide-react";
+import { Loader2, Mail, ShieldCheck, Smartphone } from "lucide-react";
 import { NomaLogo } from "@/components/NomaLogo";
 import {
   clerkPublishableKey,
@@ -150,14 +150,6 @@ function LoginForm() {
     }
   }
 
-  function handleClose() {
-    if (window.history.length > 1) {
-      router.back();
-      return;
-    }
-    router.replace(searchParams.has("next") ? nextPath : "/");
-  }
-
   const form = (
     <div className="m-auto w-full max-w-[340px] shrink-0">
       <div className="mx-auto flex w-fit items-center gap-2">
@@ -275,11 +267,6 @@ function LoginForm() {
 
   return (
     <main className="scrollbar-hidden relative flex h-full flex-col items-center overflow-y-auto bg-white px-6 py-8 sm:px-8">
-      <button type="button" onClick={handleClose} aria-label="返回上一页"
-        className="group absolute left-5 top-5 flex h-10 items-center gap-1 rounded-lg px-2 text-sm font-medium text-[#3c8b77] transition-colors duration-[180ms] hover:text-[#347a68] active:text-[#2b6657] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#3c8b77] sm:left-8 sm:top-8">
-        <ArrowLeft aria-hidden="true" className="h-4 w-4 transition-transform duration-[180ms] group-hover:-translate-x-0.5 motion-reduce:transition-none" strokeWidth={2} />
-        返回
-      </button>
       {form}
     </main>
   );

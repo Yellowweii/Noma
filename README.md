@@ -60,6 +60,8 @@ PowerShell：`Copy-Item .env.example .env`。示例占位密钥会被拒绝。�
 
 修改运行配置后 `docker compose up -d --force-recreate`；修改 Clerk Key 后需重新构建前端。邮箱 / 手机登录复用原云端验证码接口。
 
+Google 登录按钮仅在 `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` 非空时显示。Docker 部署在根目录 `.env` 填入对应 Clerk 实例的 Publishable Key 后，执行 `docker compose up -d --build`；原生开发在启动 `noma-web` 前设置该环境变量，或写入 `noma-web/.env.local`，然后重启前端。只需要公开 Key，不要把 Clerk Secret Key 放入前端。实际 Google 登录还需要配置 Clerk / 云端允许的本地来源及 `/login/sso-callback`、`/login/complete` 回调。
+
 局域网 HTTP 会明文传输凭证和对话；手机录音等浏览器能力需要安全上下文，正式家庭部署建议本地 HTTPS。服务需持续运行，初版不提供离家远程访问部署方案。
 
 ## 原生开发
