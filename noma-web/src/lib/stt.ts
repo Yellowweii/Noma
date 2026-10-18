@@ -1,5 +1,4 @@
 import { getAccessToken, recoverAccessToken } from "./auth";
-import { isGuestMode } from "./sessionMode";
 
 const API_BASE =
   "/api/v1";
@@ -66,7 +65,6 @@ export async function getSTTWebSocketUrl(): Promise<string> {
   const wsBase = new URL(API_BASE, window.location.origin).toString().replace(/\/$/, "").replace(/^http/i, (scheme) =>
     scheme.toLowerCase() === "https" ? "wss" : "ws",
   );
-  if (isGuestMode()) return `${wsBase}/guest/stt/stream`;
   let token = getAccessToken();
   if (!token) {
     await recoverAccessToken();

@@ -28,12 +28,10 @@ function CompleteLoginContent() {
   const [busy, setBusy] = useState(true);
   const [activeStep, setActiveStep] = useState<LoginEnteringStep>(2);
   const [error, setError] = useState("");
-  const [syncFailed, setSyncFailed] = useState(false);
 
   const exchange = useCallback(async () => {
     setBusy(true);
     setError("");
-    setSyncFailed(false);
     setActiveStep(2);
     try {
       if (isOTP) {
@@ -43,12 +41,6 @@ function CompleteLoginContent() {
         if (!token) throw new Error("登录已过期，请返回登录页重试");
         await api.loginClerk(token);
         prepareFreshLoginLanding();
-      }
-      try {
-        await api.importGuestChats();
-      } catch {
-        setSyncFailed(true);
-        throw new Error("登录已完成，但本地聊天记录暂未同步成功。记录仍保留在此浏览器，请点击重试");
       }
       setActiveStep(4);
       await afterPaint();
@@ -84,15 +76,6 @@ function CompleteLoginContent() {
             className="min-h-11 text-sm text-brand-600 underline"
           >
             重试
-          </button>
-        )}
-        {syncFailed && (
-          <button type="button" className="block w-full text-sm text-noma-brand" onClick={() => {
-            const next = isOTP ? otpNext : safeNextPath(sessionStorage.getItem("noma_login_next"));
-            if (!isOTP) sessionStorage.removeItem("noma_login_next");
-            router.replace(next);
-          }}>
-            稍后同步，进入 Noma
           </button>
         )}
         <Link href="/login" className="block text-center text-sm text-slate-500 hover:text-slate-700">

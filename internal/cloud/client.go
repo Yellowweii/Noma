@@ -171,7 +171,7 @@ func (c *Client) Authenticate(ctx context.Context, path, authorization string, i
 
 // Forward is called only after the local gateway has matched a method/path allowlist.
 // Caller-supplied Cookie, Authorization, Host and forwarding headers never reach cloud.
-func (c *Client) Forward(ctx context.Context, a *Account, method, path, contentType, guestCookie string, body io.Reader) (*http.Response, error) {
+func (c *Client) Forward(ctx context.Context, a *Account, method, path, contentType string, body io.Reader) (*http.Response, error) {
 	token := ""
 	var err error
 	if a != nil {
@@ -189,9 +189,6 @@ func (c *Client) Forward(ctx context.Context, a *Account, method, path, contentT
 	}
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
-	}
-	if a == nil && guestCookie != "" {
-		req.AddCookie(&http.Cookie{Name: "noma_guest_id", Value: guestCookie})
 	}
 	return c.http.Do(req)
 }

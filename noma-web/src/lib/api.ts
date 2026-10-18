@@ -8,8 +8,6 @@ import {
   setAccessToken,
   setUserId,
 } from "./auth";
-import { isGuestMode } from "./sessionMode";
-import { guestChat, importGuestChats, sendGuestMessage } from "./guestChat";
 import type { ChatQuota } from "./chatQuota";
 import { localUUID } from "./localId";
 
@@ -226,14 +224,6 @@ export const api = {
 
   logout: logoutSession,
 
-  importGuestChats: async () => {
-    const id = getUserId();
-    if (!id || !getAccessToken()) throw new Error("请先登录");
-    await importGuestChats(id, (session, messages) => request("/chat/import", {
-      method: "POST", body: JSON.stringify({ session, messages }),
-    }));
-  },
-
   getMe: () => request<import("@/types").User>("/me"),
 
   updateMe: (data: { avatar_url?: string; name?: string }) =>
@@ -243,34 +233,20 @@ export const api = {
     }),
 
   listChatSessions: () =>
-    isGuestMode() ? guestChat.listSessions() :
     request<import("@/types").ChatSession[]>("/chat/sessions"),
 
   listChatSessionPage: async (cursor = "", limit = 20): Promise<{ sessions: import("@/types").ChatSession[]; next_cursor?: string }> => {
-    if (isGuestMode()) {
-      const list = await guestChat.listSessions();
-      const start = cursor ? Math.max(0, list.findIndex((session) => session.session_id === cursor) + 1) : 0;
-      const sessions = list.slice(start, start + limit);
-      return { sessions, next_cursor: start + limit < list.length ? sessions.at(-1)?.session_id : undefined };
-    }
     return request(`/chat/sessions?${new URLSearchParams({ limit: String(limit), ...(cursor ? { cursor } : {}) })}`);
   },
 
   getChatSession: async (id: string): Promise<import("@/types").ChatSession> => {
-    if (isGuestMode()) {
-      const session = (await guestChat.listSessions()).find((item) => item.session_id === id);
-      if (!session) throw new ApiError(404, "session not found");
-      return session;
-    }
     return request(`/chat/sessions/${encodeURIComponent(id)}`);
   },
 
   getLatestChatSession: () =>
-    isGuestMode() ? guestChat.latestSession() :
     request<import("@/types").ChatSession | null>("/chat/sessions/latest"),
 
   createChatSession: () =>
-    isGuestMode() ? guestChat.createSession() :
     request<import("@/types").ChatSession>("/chat/sessions", {
       method: "POST",
       body: JSON.stringify({}),
@@ -280,24 +256,20 @@ export const api = {
     sessionId: string,
     data: { title?: string; is_pinned?: boolean },
   ) =>
-    isGuestMode() ? guestChat.updateSession(sessionId, data) :
     request<import("@/types").ChatSession>(`/chat/sessions/${sessionId}`, {
       method: "PATCH",
       body: JSON.stringify(data),
     }),
 
   deleteChatSession: async (sessionId: string) => {
-    if (isGuestMode()) return guestChat.deleteSession(sessionId);
     await request<void>(`/chat/sessions/${sessionId}`, { method: "DELETE" });
     window.dispatchEvent(new Event("noma:chat-sources-deleted"));
   },
   deleteChatMessage: async (messageId: string) => {
-    if (isGuestMode()) return guestChat.deleteMessage(messageId);
     await request<void>(`/chat/messages/${encodeURIComponent(messageId)}`, { method: "DELETE" });
     window.dispatchEvent(new Event("noma:chat-sources-deleted"));
   },
   deleteChatMessages: async (sessionId: string, messageIds: string[]) => {
-    if (isGuestMode()) return guestChat.deleteMessages(sessionId, messageIds);
     await request<void>(`/chat/sessions/${encodeURIComponent(sessionId)}/messages`, {
       method: "DELETE", body: JSON.stringify({ message_ids: messageIds }),
     });
@@ -305,7 +277,6 @@ export const api = {
   },
 
   getChatMessages: (sessionId: string) =>
-    isGuestMode() ? guestChat.getMessages(sessionId) :
     request<import("@/types").ChatMessage[]>(
       `/chat/sessions/${sessionId}/messages`,
     ),
@@ -314,7 +285,6 @@ export const api = {
     messageId: string,
     feedback: import("@/types").MessageFeedback | null,
   ) =>
-    isGuestMode() ? guestChat.setFeedback(messageId, feedback) :
     request<import("@/types").ChatMessage>(
       `/chat/messages/${messageId}/feedback`,
       {
@@ -324,10 +294,10 @@ export const api = {
     ),
 
   getSTTStatus: () =>
-    request<{ available: boolean }>(isGuestMode() ? "/guest/stt/status" : "/chat/stt/status"),
+    request<{ available: boolean }>("/chat/stt/status"),
 
   synthesizeSpeech: async (text: string, signal?: AbortSignal): Promise<Blob> => {
-    const res = await fetchWithAuth(isGuestMode() ? "/guest/tts" : "/chat/tts", {
+    const res = await fetchWithAuth("/chat/tts", {
       method: "POST",
       body: JSON.stringify({ text }),
       signal,
@@ -345,8 +315,7 @@ export const api = {
     ),
 
   getChatQuota: async (): Promise<{ quota: ChatQuota; anonymous_id?: string }> => {
-    const path = isGuestMode() ? "/guest/chat/quota" : "/chat/quota";
-    return request(path, { cache: "no-store" });
+    return request("/chat/quota", { cache: "no-store" });
   },
 
   sendMessage: async (
@@ -359,9 +328,6 @@ export const api = {
       replaceAssistantId?: string;
     },
   ) => {
-    if (isGuestMode()) {
-      return sendGuestMessage(API_BASE, sessionId, content, onEvent, consumeMessageStream, signal, options);
-    }
     const requestId = localUUID();
     const doFetch = (retried = false): Promise<Response> => {
       const token = getAccessToken();

@@ -3,8 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
-import { Brain, Home, Info, LockKeyhole, User } from "lucide-react";
-import { useUser } from "@/contexts/UserContext";
+import { Brain, Home, Info, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import styles from "./settings-responsive.module.css";
 
@@ -17,7 +16,6 @@ const settingsNavItems = [
 
 export function SettingsNav({ onNavigate, inPopover = false }: { onNavigate?: () => void; inPopover?: boolean }) {
   const pathname = usePathname();
-  const { isGuest } = useUser();
   const navRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -54,9 +52,6 @@ export function SettingsNav({ onNavigate, inPopover = false }: { onNavigate?: ()
           >
             <Icon className="size-5 shrink-0" strokeWidth={1.75} />
             <span className="flex-1">{label}</span>
-            {isGuest && (href === "/settings/ha" || href === "/settings/memory" || href === "/settings/profile") && (
-              <LockKeyhole className="size-4 shrink-0 text-noma-brand" strokeWidth={1.75} aria-label="登录后可用" />
-            )}
           </Link>
         );
       })}

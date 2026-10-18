@@ -12,8 +12,6 @@ import {
 } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { api, bootstrapSession, getAccessToken } from "@/lib/api";
-import { isGuestMode } from "@/lib/sessionMode";
-import { readGuestChatCache } from "@/lib/guestChat";
 import {
   clearNewChatIntent,
   clearStoredActiveSessionId,
@@ -148,16 +146,6 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
     if (clientRestoreDoneRef.current) return;
     clientRestoreDoneRef.current = true;
 
-    if (isGuestMode()) {
-      const cached = readGuestChatCache();
-      setSessions(sortChatSessions(cached.map(({ messages: _messages, ...session }) => session)).slice(0, 20));
-      for (const session of cached) {
-        if (!getSessionSnapshot(session.session_id)?.fetched) {
-          writeSessionSnapshot(session.session_id, { messages: session.messages, fetched: true });
-        }
-      }
-    }
-
     const restoredId = readRestorableSessionId();
     if (restoredId) {
       const pendingId = bootstrapPendingIdRef.current;
@@ -229,7 +217,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
 
     async function hydrateSessions() {
       setLoading(true);
-      if (!isGuestMode() && !getAccessToken()) {
+      if (!getAccessToken()) {
         const ok = await bootstrapSession();
         if (cancelled || !ok) {
           throw new Error("Auth bootstrap failed");
@@ -311,8 +299,6 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!sessions.length) return;
-    // Local messages are cheap to load on selection; keep refresh focused on the active chat.
-    if (isGuestMode()) return;
     if (activeSessionId && !isPendingSessionId(activeSessionId)) {
       prefetchSessionMessages(activeSessionId);
     }

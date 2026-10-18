@@ -12,3 +12,4 @@ require.extensions[".ts"] = (module, filename) => {
 require("../src/lib/haConnectionSnapshot.test.cjs");
 require("../src/app/(dashboard)/home/home-device-control.test.ts");
 require("../src/lib/localId.test.cjs");
+require("../src/lib/auth.test.cjs");

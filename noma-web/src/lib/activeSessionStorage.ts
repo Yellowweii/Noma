@@ -1,15 +1,12 @@
-import { isGuestMode } from "./sessionMode";
-
 function storageKey() {
-  return isGuestMode() ? "noma.guest.activeSessionId" : "noma.activeSessionId";
+  return "noma.activeSessionId";
 }
 
 function intentCookie() {
-  return isGuestMode() ? GUEST_NEW_CHAT_INTENT_COOKIE : NEW_CHAT_INTENT_COOKIE;
+  return NEW_CHAT_INTENT_COOKIE;
 }
 
 export const NEW_CHAT_INTENT_COOKIE = "noma.newChatIntent";
-export const GUEST_NEW_CHAT_INTENT_COOKIE = "noma.guest.newChatIntent";
 
 const SESSION_ID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

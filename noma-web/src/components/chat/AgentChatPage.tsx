@@ -21,7 +21,6 @@ import { ScrollArea } from "@/components/layout/ScrollArea";
 import { FloatingTip } from "@/components/ui/FloatingTip";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { useChatSessions } from "@/contexts/ChatSessionContext";
-import { useUser } from "@/contexts/UserContext";
 import { api, ApiError } from "@/lib/api";
 import {
   type SpeechRecognitionErrorCode,
@@ -49,7 +48,6 @@ type AgentChatPageProps = {
 export function AgentChatPage({
   ssrNewChatIntent = false,
 }: AgentChatPageProps) {
-  const { isGuest } = useUser();
   const [quota, setQuota] = useState<ChatQuota>();
   const [quotaOpen, setQuotaOpen] = useState(false);
   const closeQuota = useCallback(() => setQuotaOpen(false), []);
@@ -72,7 +70,7 @@ export function AgentChatPage({
       cancelled = true;
       window.removeEventListener("focus", refresh);
     };
-  }, [isGuest]);
+  }, []);
   useEffect(() => {
     if (!quota) return;
     const timeout = window.setTimeout(
@@ -1209,9 +1207,7 @@ export function AgentChatPage({
           }}
           placeholder={
             quotaExhausted
-              ? isGuest
-                ? "今日免费额度已用完，登录后可继续对话…"
-                : "今日免费额度已用完，明天再来聊聊吧…"
+              ? "今日免费额度已用完，明天再来聊聊吧…"
               : showSpeechStatus
                 ? ""
                 : "问问 Noma"
@@ -1243,11 +1239,6 @@ export function AgentChatPage({
   const lastAssistantMessageId = [...messages]
     .reverse()
     .find((m) => m.role === "assistant")?.message_id;
-  const guestStorageNotice = isGuest ? (
-    <p className="mt-3 text-center text-xs leading-5 text-noma-tertiary">
-      当前对话仅保存在此浏览器中，登录后可保存聊天记录
-    </p>
-  ) : null;
 
   if (isNewChat) {
     return (
@@ -1272,7 +1263,6 @@ export function AgentChatPage({
           </div>
           <div className={styles.welcomeComposer}>
             {inputBar}
-            {guestStorageNotice}
           </div>
         </div>
       </div>
@@ -1382,7 +1372,6 @@ export function AgentChatPage({
       <div className={cn(styles.composer, "shrink-0 px-6 pb-4 pt-2")}>
         <div className="mx-auto max-w-3xl">
           {inputBar}
-          {guestStorageNotice}
         </div>
       </div>
     </div>

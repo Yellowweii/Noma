@@ -1,6 +1,5 @@
 import { clerkPublishableKey, getClerkSessionToken, hasClerkLoginIntent, signOutClerk } from "./clerk";
 import { clearLoginSessionState } from "./activeSessionStorage";
-import { setGuestMode } from "./sessionMode";
 
 const API_BASE = "/api/v1";
 
@@ -14,7 +13,6 @@ export function getAccessToken(): string | null {
 
 export function setAccessToken(token: string | null) {
   accessToken = token;
-  if (token) setGuestMode(false);
 }
 
 export function getUserId(): string | null {
@@ -95,7 +93,12 @@ async function exchangeClerkSession(): Promise<boolean> {
 
 export async function recoverAccessToken(): Promise<boolean> {
   if (await refreshAccessToken()) return true;
-  return exchangeClerkSession();
+  if (await exchangeClerkSession()) return true;
+  if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+    const next = window.location.pathname + window.location.search;
+    window.location.replace(`/login?next=${encodeURIComponent(next)}`);
+  }
+  return false;
 }
 
 export async function bootstrapSession(): Promise<boolean> {

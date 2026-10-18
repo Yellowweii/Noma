@@ -12,7 +12,6 @@ import {
   Search,
   Settings,
   SquarePen,
-  UserRound,
 } from "lucide-react";
 import { SessionSearchDialog } from "@/components/chat/SessionSearchDialog";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -188,7 +187,7 @@ export function AgentSidebar({
   const isAgent = pathname.startsWith("/agent");
   const [pinnedOpen, setPinnedOpen] = useState(true);
   const [recentOpen, setRecentOpen] = useState(true);
-  const { user, isGuest } = useUser();
+  const { user } = useUser();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
@@ -210,10 +209,6 @@ export function AgentSidebar({
   }, [collapsed, recentOpen, pinnedOpen, hasMoreSessions, loadingMore, sessionLoadError, loadMoreSessions]);
 
   useEffect(() => {
-    if (isGuest) {
-      setMemoryHref("/memory");
-      return;
-    }
     const visitingMemory = isMemoryPath(pathname);
     const memoryPath = `${pathname}${window.location.search}`;
     if (visitingMemory) setMemoryHref(memoryPath);
@@ -228,7 +223,7 @@ export function AgentSidebar({
     } catch {
       // Keep in-session navigation working when browser storage is unavailable.
     }
-  }, [pathname, isGuest]);
+  }, [pathname]);
 
   const handleLogout = useCallback(async () => {
     if (loggingOut) return;
@@ -395,7 +390,7 @@ export function AgentSidebar({
                 <Link
                   key={href}
                   ref={href.startsWith("/settings") ? settingsAnchorRef : undefined}
-                  href={href === "/memory" && !isGuest ? memoryHref : href}
+                  href={href === "/memory" ? memoryHref : href}
                   onClick={(event) => {
                     if (href.startsWith("/settings") && openMobileSettings(event)) return;
                     onNavigate?.();
@@ -451,21 +446,6 @@ export function AgentSidebar({
           </ScrollArea>
       </div>
 
-      {isGuest && (
-        <div className="mt-auto shrink-0 border-t border-slate-200 px-2 py-4">
-          <Link
-            href={`/login?next=${encodeURIComponent(pathname)}`}
-            title="去登录"
-            aria-label="未登录，去登录"
-            className="flex min-w-[44px] items-center gap-2.5 rounded-lg p-1 text-sm hover:bg-noma-soft"
-          >
-            <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-noma-soft text-noma-tertiary">
-              <UserRound className="size-5" strokeWidth={1.75} aria-hidden="true" />
-            </span>
-              <span aria-hidden={collapsed} className={cn("flex-1 whitespace-nowrap text-[13.5px] font-medium text-noma-secondary", expandedOnlyClass)}>未登录</span>
-          </Link>
-        </div>
-      )}
       {user && (
         <div
           className={cn(

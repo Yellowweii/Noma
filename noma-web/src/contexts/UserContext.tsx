@@ -15,18 +15,16 @@ import type { User } from "@/types";
 interface UserContextValue {
   user: User | null;
   loading: boolean;
-  isGuest: boolean;
   refreshUser: () => Promise<User | null>;
 }
 
 const UserContext = createContext<UserContextValue | null>(null);
 
-export function UserProvider({ children, isGuest = false }: { children: ReactNode; isGuest?: boolean }) {
+export function UserProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   const refreshUser = useCallback(async () => {
-    if (isGuest) return null;
     try {
       const me = await api.getMe();
       preloadUserAvatar(me.avatar_url);
@@ -36,7 +34,7 @@ export function UserProvider({ children, isGuest = false }: { children: ReactNod
       setUser(null);
       return null;
     }
-  }, [isGuest]);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -49,7 +47,7 @@ export function UserProvider({ children, isGuest = false }: { children: ReactNod
   }, [refreshUser]);
 
   return (
-    <UserContext.Provider value={{ user, loading, isGuest, refreshUser }}>
+    <UserContext.Provider value={{ user, loading, refreshUser }}>
       {children}
     </UserContext.Provider>
   );

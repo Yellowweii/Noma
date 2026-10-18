@@ -102,17 +102,6 @@ func newFixture(t *testing.T, options fixtureOptions) *fixture {
 			w.Header().Set("Content-Type", "text/event-stream")
 			http.SetCookie(w, &http.Cookie{Name: "noma_refresh_token", Value: "test-refresh-token"})
 			_, _ = w.Write([]byte("event: message\ndata: {\"type\":\"token\",\"content\":\"你好\"}\n\nevent: message\ndata: {\"type\":\"done\"}\n\n"))
-		case "/api/v1/guest/chat", "/api/v1/guest/chat/quota":
-			if r.Header.Get("Authorization") != "" || strings.Contains(r.Header.Get("Cookie"), cookieName) {
-				t.Error("guest request received account or household credentials")
-			}
-			http.SetCookie(w, &http.Cookie{Name: "noma_guest_id", Value: "test-guest-quota", Path: "/", HttpOnly: true})
-			if r.Method == "GET" {
-				writeJSON(w, 200, map[string]any{"quota": map[string]int{"remaining": 3}})
-				return
-			}
-			w.Header().Set("Content-Type", "text/event-stream")
-			_, _ = w.Write([]byte("data: {\"type\":\"token\",\"content\":\"你好\"}\n\ndata: {\"type\":\"done\"}\n\n"))
 		case "/api/v1/auth/otp/send":
 			writeJSON(w, 200, map[string]bool{"ok": true})
 		case "/api/v1/auth/otp/verify":
@@ -214,17 +203,7 @@ func (f *fixture) request(t *testing.T, method, path string, input any) (int, st
 
 func (f *fixture) login(t *testing.T) {
 	t.Helper()
-	status, body, _ := f.request(t, "POST", "/api/local/unlock", map[string]string{"key": testKey})
-	if status != 200 {
-		t.Fatalf("unlock: %d %s", status, body)
-	}
-	status, body, headers := f.request(t, "POST", "/api/local/auth/login", map[string]string{"email": "test@example.invalid", "code": "123456"})
-	if status != 200 {
-		t.Fatalf("login: %d %s", status, body)
-	}
-	if strings.Contains(body, "test-cloud-access") || strings.Contains(strings.Join(headers.Values("Set-Cookie"), ";"), "test-refresh-token") {
-		t.Fatal("cloud credentials disclosed to browser")
-	}
+	frontendLogin(t, f)
 }
 
 func input() turnInput { return turnInput{RequestID: requestID, Message: "打开测试灯"} }
@@ -320,7 +299,7 @@ func TestRefreshCredentialsStayOnBackendAndLogoutRevokesLocalSession(t *testing.
 		t.Fatal("logout failed")
 	}
 	status, body, _ = f.request(t, "GET", "/api/local/status", nil)
-	if status != 200 || !strings.Contains(body, `"ha_authorized":false`) || strings.Contains(body, "ha_url") {
+	if status != 401 {
 		t.Fatal("local session survived logout")
 	}
 }

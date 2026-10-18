@@ -2,57 +2,42 @@
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { GuestFeaturePage } from "@/components/guest/GuestFeaturePage";
+import { Loader2 } from "lucide-react";
 import { ResizableDashboardShell } from "@/components/layout/ResizableDashboardShell";
 import { HAConnectionMonitor } from "@/components/layout/HAConnectionMonitor";
 import { ChatSessionProvider } from "@/contexts/ChatSessionContext";
 import { UserProvider } from "@/contexts/UserContext";
 import { bootstrapSession, getAccessToken } from "@/lib/api";
-import { setGuestMode } from "@/lib/sessionMode";
 
-export function DashboardContent({ children, initiallyGuest }: {
+export function DashboardContent({ children }: {
   children: React.ReactNode;
-  initiallyGuest: boolean;
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [authState, setAuthState] = useState<"loading" | "ok" | "guest">(() => {
-    const state = getAccessToken() ? "ok" : initiallyGuest ? "guest" : "loading";
-    // Initialize browser storage routing before the session provider restores it.
-    if (typeof window !== "undefined") setGuestMode(state === "guest");
-    return state;
-  });
+  const [authenticated, setAuthenticated] = useState(false);
 
   useEffect(() => {
-    if (authState !== "loading") return;
     let cancelled = false;
     (async () => {
       const ok = getAccessToken() ? true : await bootstrapSession();
       if (cancelled) return;
-      setGuestMode(!ok);
-      setAuthState(ok ? "ok" : "guest");
+      if (!ok) {
+        router.replace(`/login?next=${encodeURIComponent(pathname + window.location.search)}`);
+        return;
+      }
+      setAuthenticated(true);
     })();
     return () => { cancelled = true; };
-  }, [authState]);
+  }, [pathname, router]);
 
-  useEffect(() => {
-    if (authState === "guest" && pathname.startsWith("/memory/")) {
-      router.replace("/memory");
-    }
-  }, [authState, pathname, router]);
-
-  const guestFeature = pathname.startsWith("/memory")
-    ? "memory"
-    : pathname.startsWith("/home") ? "home" : null;
+  if (!authenticated) return <div className="flex h-full items-center justify-center bg-white"><Loader2 aria-label="正在验证登录状态" className="size-5 animate-spin text-noma-brand" /></div>;
 
   return (
-    <UserProvider key={authState === "guest" ? "guest" : "account"} isGuest={authState === "guest"}>
-      <HAConnectionMonitor enabled={authState === "ok"} />
+    <UserProvider>
+      <HAConnectionMonitor enabled />
       <ChatSessionProvider>
         <ResizableDashboardShell>
-          {authState === "guest" && guestFeature
-            ? <GuestFeaturePage feature={guestFeature} />
-            : children}
+          {children}
         </ResizableDashboardShell>
       </ChatSessionProvider>
     </UserProvider>

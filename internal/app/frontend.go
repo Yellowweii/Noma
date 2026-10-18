@@ -28,7 +28,7 @@ var cloudRoutes = []struct {
 }{
 	{"GET", regexp.MustCompile(`^/(me|settings|chat/quota|chat/sessions|chat/sessions/latest|chat/sessions/[A-Za-z0-9_-]+|chat/sessions/[A-Za-z0-9_-]+/messages|chat/trace/[A-Za-z0-9_-]+|chat/stt/status)$`)},
 	{"PATCH", regexp.MustCompile(`^/(me|chat/sessions/[A-Za-z0-9_-]+|chat/messages/[A-Za-z0-9_-]+/feedback)$`)},
-	{"POST", regexp.MustCompile(`^/(chat/sessions|chat/import|chat/tts)$`)},
+	{"POST", regexp.MustCompile(`^/(chat/sessions|chat/tts)$`)},
 	{"DELETE", regexp.MustCompile(`^/chat/(sessions/[A-Za-z0-9_-]+(/messages)?|messages/[A-Za-z0-9_-]+)$`)},
 	{"GET", regexp.MustCompile(`^/memory/(overview|items|topics|recent-understanding(/[A-Za-z0-9_-]+)?|home-items|turn-status/[A-Za-z0-9_-]+)$`)},
 	{"DELETE", regexp.MustCompile(`^/memory/(items|home-items)/[A-Za-z0-9_-]+$`)},
@@ -42,21 +42,12 @@ func (s *Server) frontendAPI(ctx context.Context, w http.ResponseWriter, r *http
 	if s.frontendAuth(ctx, w, r, sess, path) {
 		return
 	}
-	if strings.HasPrefix(path, "/guest/") || path == "/community/qr-code" {
-		allowed := r.Method == "GET" && (path == "/guest/chat/quota" || path == "/guest/stt/status" || path == "/community/qr-code") || r.Method == "POST" && (path == "/guest/chat" || path == "/guest/tts")
-		if allowed {
-			s.forwardCloud(ctx, w, r, nil)
-			return
-		}
-		if path == "/guest/stt/stream" && r.Method == "GET" {
-			s.forwardSpeech(ctx, w, r, nil)
-			return
-		}
-		fail(w, 404, "接口不存在")
-		return
-	}
 	if sess.account == nil {
 		fail(w, 401, "请先登录 Noma 云端账号")
+		return
+	}
+	if path == "/community/qr-code" && r.Method == "GET" {
+		s.forwardCloud(ctx, w, r, sess.account)
 		return
 	}
 	if path == "/chat/stt/stream" && r.Method == "GET" {
@@ -152,6 +143,7 @@ func (s *Server) frontendAuth(ctx context.Context, w http.ResponseWriter, r *htt
 			s.cloud.Logout(ctx, sess.account)
 		}
 		sess.account, sess.turns = account, map[string]cachedTurn{}
+		sess.haAuthorized = false
 		sess.userID, _ = body["user_id"].(string)
 		if sess.userID == "" {
 			if user, ok := body["user"].(map[string]any); ok {
@@ -186,7 +178,8 @@ func (s *Server) frontendAuth(ctx context.Context, w http.ResponseWriter, r *htt
 			s.cloud.Logout(ctx, sess.account)
 		}
 		sess.account, sess.userID, sess.turns = nil, "", map[string]cachedTurn{}
-		// Keep this browser's separately granted household access.
+		// Signing out also revokes this browser's device authorization.
+		sess.haAuthorized = false
 		writeJSON(w, 200, map[string]bool{"ok": true})
 	default:
 		fail(w, 404, "认证接口不存在")
@@ -196,36 +189,17 @@ func (s *Server) frontendAuth(ctx context.Context, w http.ResponseWriter, r *htt
 
 func (s *Server) forwardCloud(ctx context.Context, w http.ResponseWriter, r *http.Request, account *cloud.Account) {
 	body := http.MaxBytesReader(w, r.Body, 2<<20)
-	guestID := ""
-	if account == nil {
-		if cookie, err := r.Cookie("noma_guest_id"); err == nil {
-			guestID = cookie.Value
-		}
-	}
-	response, err := s.cloud.Forward(ctx, account, r.Method, r.URL.RequestURI(), r.Header.Get("Content-Type"), guestID, body)
+	response, err := s.cloud.Forward(ctx, account, r.Method, r.URL.RequestURI(), r.Header.Get("Content-Type"), body)
 	if err != nil {
 		cloudFailure(w, err)
 		return
 	}
 	defer response.Body.Close()
-	s.streamCloud(w, response, account == nil)
+	s.streamCloud(w, response)
 }
 
-func (s *Server) streamCloud(w http.ResponseWriter, response *http.Response, anonymous bool) {
+func (s *Server) streamCloud(w http.ResponseWriter, response *http.Response) {
 	w.Header().Set("Content-Type", response.Header.Get("Content-Type"))
-	// Preserve the signed anonymous quota identity, but never cloud login cookies.
-	if anonymous {
-		for _, cookie := range response.Cookies() {
-			if cookie.Name == "noma_guest_id" {
-				cookie.Domain = ""
-				cookie.Path = "/"
-				cookie.Secure = s.cfg.SecureCookie
-				cookie.HttpOnly = true
-				cookie.SameSite = http.SameSiteLaxMode
-				http.SetCookie(w, cookie)
-			}
-		}
-	}
 	w.WriteHeader(response.StatusCode)
 	buffer := make([]byte, 16<<10)
 	for {
@@ -255,21 +229,12 @@ func (s *Server) forwardSpeech(ctx context.Context, w http.ResponseWriter, r *ht
 		}
 	}
 	target, _ := url.Parse(s.cfg.CloudURL)
-	guestID := ""
-	if account == nil {
-		if cookie, err := r.Cookie("noma_guest_id"); err == nil {
-			guestID = cookie.Value
-		}
-	}
 	proxy := httputil.NewSingleHostReverseProxy(target)
 	director := proxy.Director
 	proxy.Director = func(req *http.Request) {
 		director(req)
 		req.Host = target.Host
 		req.Header.Del("Cookie")
-		if guestID != "" {
-			req.AddCookie(&http.Cookie{Name: "noma_guest_id", Value: guestID})
-		}
 		req.Header.Del("Authorization")
 		req.Header.Del("Forwarded")
 		req.Header.Del("X-Forwarded-For")
@@ -308,17 +273,17 @@ func (s *Server) frontendSend(ctx context.Context, w http.ResponseWriter, r *htt
 		// This dedicated cloud route must disable HA tools AND context reads.
 		// Never forward to the legacy chat route, which can execute cloud HA.
 		body, _ := json.Marshal(input)
-		response, err := s.cloud.Forward(ctx, sess.account, "POST", "/api/v1/local/chat/sessions/"+url.PathEscape(sessionID)+"/messages", "application/json", "", bytes.NewReader(body))
+		response, err := s.cloud.Forward(ctx, sess.account, "POST", "/api/v1/local/chat/sessions/"+url.PathEscape(sessionID)+"/messages", "application/json", bytes.NewReader(body))
 		if err != nil {
 			cloudFailure(w, err)
 			return
 		}
 		defer response.Body.Close()
 		if response.StatusCode == 404 || response.StatusCode == 405 || response.StatusCode == 501 {
-			fail(w, 503, "云端纯聊天接口尚未就绪，请先使用游客聊天")
+			fail(w, 503, "云端纯聊天接口尚未就绪，请联系部署管理员完成云端对接")
 			return
 		}
-		s.streamCloud(w, response, false)
+		s.streamCloud(w, response)
 		return
 	}
 	result := s.processTurn(ctx, sess, turnInput{RequestID: input.RequestID, SessionID: sessionID, Message: input.Content, Regenerate: input.Regenerate, ReplaceAssistantID: input.ReplaceAssistantID})

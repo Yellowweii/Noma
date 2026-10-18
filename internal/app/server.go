@@ -149,7 +149,28 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(w, 405, "method not allowed")
 		return
 	}
+	if !publicWebPath(r.URL.Path) {
+		sess := s.getSession(r)
+		loggedIn := false
+		if sess != nil {
+			sess.mu.Lock()
+			loggedIn = sess.account != nil
+			sess.mu.Unlock()
+		}
+		if !loggedIn {
+			http.Redirect(w, r, "/login?next="+url.QueryEscape(r.URL.RequestURI()), http.StatusSeeOther)
+			return
+		}
+	}
 	s.web.ServeHTTP(w, r)
+}
+
+func publicWebPath(path string) bool {
+	switch strings.TrimSuffix(path, "/") {
+	case "/login", "/login/", "/login/complete", "/login/sso-callback", "/privacy", "/terms", "/icon.svg", "/favicon.svg", "/noma-logo.svg", "/default-user-avatar.svg":
+		return true
+	}
+	return strings.HasPrefix(path, "/_next/static/") || path == "/_next/image" || path == "/_next/webpack-hmr" || strings.HasPrefix(path, "/images/") || strings.HasPrefix(path, "/videos/")
 }
 
 func (s *Server) getSession(r *http.Request) *session {
@@ -168,6 +189,17 @@ func (s *Server) getSession(r *http.Request) *session {
 }
 
 func (s *Server) unlock(w http.ResponseWriter, r *http.Request) {
+	sess := s.getSession(r)
+	if sess == nil {
+		fail(w, 401, "请先登录 Noma 云端账号")
+		return
+	}
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+	if sess.account == nil {
+		fail(w, 401, "请先登录 Noma 云端账号")
+		return
+	}
 	var req struct {
 		Key string `json:"key"`
 	}
@@ -205,16 +237,8 @@ func (s *Server) unlock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.mu.Unlock()
-	if sess := s.getSession(r); sess != nil {
-		sess.mu.Lock()
-		sess.haAuthorized = true
-		sess.mu.Unlock()
-		writeJSON(w, 200, map[string]bool{"ok": true})
-		return
-	}
-	if s.saveSession(w, &session{haAuthorized: true, turns: map[string]cachedTurn{}}) {
-		writeJSON(w, 200, map[string]bool{"ok": true})
-	}
+	sess.haAuthorized = true
+	writeJSON(w, 200, map[string]bool{"ok": true})
 }
 
 // Cloud login creates a browser session; the household key only adds HA access.
@@ -250,17 +274,12 @@ func (s *Server) api(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sess := s.getSession(r)
-	if sess == nil && strings.HasPrefix(path, "/api/v1/") {
-		// Public guest routes need no persisted session. Successful cloud login
-		// persists this session before sending its response.
+	if sess == nil && strings.HasPrefix(path, "/api/v1/auth/") {
+		// Only successful cloud login persists this temporary session.
 		sess = &session{turns: map[string]cachedTurn{}}
 	}
-	if path == "/api/local/status" && r.Method == "GET" && sess == nil {
-		writeJSON(w, 200, map[string]bool{"ha_authorized": false, "logged_in": false})
-		return
-	}
 	if sess == nil {
-		fail(w, 401, "请先解锁本地实例")
+		fail(w, 401, "请先登录 Noma 云端账号")
 		return
 	}
 	// Serialize one browser's login/turn/logout operations and protect replay state.
@@ -270,6 +289,10 @@ func (s *Server) api(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	if strings.HasPrefix(path, "/api/v1/") {
 		s.frontendAPI(ctx, w, r, sess)
+		return
+	}
+	if sess.account == nil {
+		fail(w, 401, "请先登录 Noma 云端账号")
 		return
 	}
 	if !sess.haAuthorized {
@@ -321,6 +344,7 @@ func (s *Server) api(w http.ResponseWriter, r *http.Request) {
 			s.cloud.Logout(ctx, sess.account)
 		}
 		sess.account = account
+		sess.haAuthorized = false
 		// Replay responses belong to the previous cloud identity, if any.
 		sess.turns = map[string]cachedTurn{}
 		writeJSON(w, 200, map[string]bool{"ok": true})
