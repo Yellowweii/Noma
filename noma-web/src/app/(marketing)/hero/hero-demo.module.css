@@ -1,0 +1,137 @@
+.heroSection { --hero-header-height: 64px; --hero-canvas-width: 880; --hero-canvas-height: 450; background: var(--landing-bg); color: var(--landing-text); }
+.heroInner { display: flex; flex-direction: column; align-items: center; width: 100%; margin: 0 auto; }
+.heroIntro { display: flex; align-items: center; justify-content: center; width: 100%; min-height: calc(100svh - var(--hero-header-height)); padding: clamp(32px, 5svh, 56px) 0 calc(clamp(32px, 5svh, 56px) + var(--hero-header-height)); }
+.heroCopy { display: flex; flex-direction: column; align-items: center; width: 100%; max-width: 960px; text-align: center; }
+.heroTitle { margin: 0; color: var(--landing-text); font-size: clamp(44px, 5.8vw, 84px); font-weight: 500; line-height: 1.2; letter-spacing: -.03em; }
+.heroTitle span { display: inline-block; white-space: nowrap; }
+.heroTitle span:last-child { color: var(--landing-brand); }
+.heroDescription { max-width: 560px; margin: 28px 0 0; color: var(--landing-muted); font-size: clamp(15px, 1.1vw, 19px); line-height: 1.8; text-wrap: balance; }
+.heroDescription span { display: block; }
+.heroActions { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 14px; margin-top: 40px; }
+.heroPrimary { display: inline-flex; align-items: center; justify-content: center; min-width: 148px; min-height: 50px; padding: 0 30px; border: 1px solid transparent; border-radius: 999px; font-size: 15px; transition: background-color 180ms, border-color 180ms; }
+.heroPrimary { background: var(--landing-brand); color: #fff; font-weight: 500; }
+.heroPrimary:hover { background: var(--landing-brand-hover); }
+.heroTrack { width: 100%; min-width: 0; }
+.heroStage { display: flex; flex-direction: column; align-items: center; width: 100%; }
+.heroVisual { display: flex; align-items: center; width: min(100%, 90vw, calc((100svh - 2 * var(--hero-header-height)) * .9 * var(--hero-canvas-width) / var(--hero-canvas-height))); min-width: 0; margin: 0 auto; padding: 32px 0; }
+@media (min-width: 801px) and (prefers-reduced-motion: no-preference) {
+  /* Introduction and demo share one native sticky stage and the same scroll playhead. */
+  .heroTrack { --hero-handoff-distance: clamp(360px, 65svh, 640px); height: calc(100svh - var(--hero-header-height) + var(--hero-handoff-distance) + clamp(1800px, 258.75svh, 2812.5px)); }
+  .heroStage { position: sticky; top: var(--hero-header-height); display: grid; height: calc(100svh - var(--hero-header-height)); }
+  .heroIntro, .heroVisual { grid-area: 1 / 1; }
+  .heroIntro { z-index: 1; }
+  .heroVisual { height: calc(100svh - var(--hero-header-height)); padding-bottom: calc(32px + var(--hero-header-height)); opacity: 0; visibility: hidden; pointer-events: none; }
+}
+.root { position: relative; width: 100%; min-width: 0; aspect-ratio: var(--hero-canvas-width, 880) / var(--hero-canvas-height, 450); color: var(--landing-text); }
+/* Scale the complete fixed-layout picture once; scrolling never reflows its contents. */
+.scene { position: absolute; top: 0; left: 0; width: calc(var(--hero-canvas-width, 880) * 1px); height: calc(var(--hero-canvas-height, 450) * 1px); transform: scale(var(--hero-fit-scale, 1)); transform-origin: top left; isolation: isolate; }
+
+/* The chat screen follows the actual Noma sidebar, welcome view and composer. */
+.agentScene { position: absolute; inset: 0; display: flex; overflow: hidden; border: 1px solid #dfe6e1; border-radius: 12px; background: #fff; box-shadow: 0 18px 56px -24px #20423833, 0 2px 8px #2042380a; pointer-events: none; }
+.agentCanvas { display: flex; flex: none; width: 100%; height: 100%; }
+.sidebar { display: flex; flex: 0 0 132px; flex-direction: column; border-right: 1px solid #e7ebee; background: #fff; color: #334155; }
+.sidebarHeader { display: flex; align-items: center; justify-content: space-between; gap: 4px; padding: 16px 10px 13px; }
+.sidebarBrand { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; color: #111827; }
+.logo { width: 19px; height: 19px; flex: none; }
+.sidebarTools { display: flex; gap: 7px; color: #94a3b8; }
+.sidebarTools svg { width: 13px; height: 13px; stroke-width: 1.8; }
+.sidebarNav { display: flex; flex-direction: column; gap: 1px; padding: 0 7px; }
+.sidebarItem { display: flex; align-items: center; gap: 8px; min-height: 31px; padding: 5px 6px; font-size: 11px; }
+.sidebarItem svg { width: 15px; height: 15px; flex: none; stroke-width: 1.8; }
+.sessionLabel { display: flex; align-items: center; align-self: flex-start; gap: 3px; margin: 21px 13px 0; padding: 0; border: 0; background: none; color: #64748b; font-size: 10px; cursor: pointer; pointer-events: auto; }
+.sessionLabel svg { width: 11px; height: 11px; transition: transform 180ms; }
+.sessionLabel[aria-expanded="false"] svg { transform: rotate(-90deg); }
+.sessionLabel:focus-visible { outline: 2px solid var(--landing-brand); outline-offset: 3px; }
+.recentSessions { margin: 5px 7px 0; padding: 0; list-style: none; }
+.currentSession { overflow: hidden; padding: 8px 7px; border-radius: 6px; background: #f2f5f3; color: #334155; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.sidebarFoot { display: flex; align-items: center; gap: 7px; min-height: 47px; margin-top: auto; padding: 8px 11px; border-top: 1px solid #e7ebee; color: #111827; font-size: 10px; }
+.userAvatar { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: #dcebe7; color: var(--landing-brand); }
+.userAvatar svg { width: 13px; height: 13px; stroke-width: 1.6; }
+.chat { position: relative; flex: 1; min-width: 0; background: #fff; }
+.welcomePage, .conversationPage { position: absolute; inset: 0; }
+.conversationPage { opacity: 0; }
+.welcomePage { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; }
+.welcomeContent { display: flex; flex-direction: column; align-items: center; text-align: center; }
+.welcomeLogo { width: 40px; height: 40px; margin-bottom: 19px; }
+.welcomeContent h2 { color: #111827; font-size: 22px; font-weight: 600; line-height: 1.3; }
+.welcomeContent h2 span { color: var(--landing-brand); }
+.welcomeContent p { margin-top: 11px; color: #64748b; font-size: 11px; line-height: 1.5; }
+.welcomeComposer, .chatComposer { display: flex; align-items: center; gap: 8px; height: 46px; padding: 5px 6px 5px 16px; border: 1px solid #e7ebee; border-radius: 999px; background: #fff; box-shadow: 0 4px 18px #00000008; color: #9aa5b1; font-size: 11px; }
+.welcomeComposer { width: min(100%, 392px); margin-top: 29px; }
+.welcomeComposer > span:first-child, .chatComposer > span:first-child { flex: 1; min-width: 0; }
+.welcomeComposer > svg, .chatComposer > svg { width: 14px; height: 14px; flex: none; color: #7a8585; }
+.typed { color: #344449; }
+.cursor { display: inline-block; width: 1px; height: 12px; margin-left: 2px; background: var(--landing-brand); vertical-align: -2px; }
+.send { display: grid; place-items: center; width: 31px; height: 31px; flex: none; border-radius: 50%; background: #edf0ef; color: #b5c0bc; }
+.send svg { width: 15px; height: 15px; stroke-width: 2; }
+.conversationPage { display: flex; flex-direction: column; }
+.messages { flex: 1; min-height: 0; padding: 54px 29px 12px; }
+.user { display: flex; justify-content: flex-end; }
+.user .bubble { max-width: 100%; background: #f2f4f3; font-size: 12px; }
+.thinking { display: flex; gap: 4px; margin-top: 25px; }
+.thinking i { width: 5px; height: 5px; border-radius: 50%; background: #9ca8a4; }
+.response { margin-top: 25px; }
+.agentReply { min-height: 21px; color: #111827; font-size: 12px; line-height: 1.9; }
+.streamCursor { display: inline-block; width: 2px; height: 13px; margin-left: 2px; background: var(--landing-brand); vertical-align: -2px; }
+.messageActions { display: flex; gap: 11px; margin-top: 11px; color: #9aa5b1; }
+.messageActions svg { width: 12px; height: 12px; stroke-width: 1.7; }
+.chatComposer { flex: none; margin: 0 20px 17px; }
+
+/* The room replaces the chat screen; no additional player chrome surrounds it. */
+.physicalScene { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; }
+.panorama { position: relative; width: 100%; aspect-ratio: 2 / 1; overflow: hidden; border-radius: 12px; background: #e8e8e6; box-shadow: 0 18px 56px -24px #20423833, 0 2px 8px #2042380a; }
+.panoramaImage { object-fit: cover; filter: saturate(.76); user-select: none; }
+.panoramaAfter { position: absolute; inset: 0; opacity: 0; }
+.bedroomPhotoChange { -webkit-mask-image: linear-gradient(90deg, #000 0%, #000 30%, transparent 42%); mask-image: linear-gradient(90deg, #000 0%, #000 30%, transparent 42%); }
+.airPhotoChange { -webkit-mask-image: linear-gradient(90deg, transparent 33%, #000 43%, #000 62%, transparent 71%); mask-image: linear-gradient(90deg, transparent 33%, #000 43%, #000 62%, transparent 71%); }
+.livingPhotoChange { -webkit-mask-image: linear-gradient(90deg, transparent 65%, #000 77%, #000 100%); mask-image: linear-gradient(90deg, transparent 65%, #000 77%, #000 100%); }
+.acDisplay { position: absolute; top: 12%; left: 53%; font-size: 11px; font-weight: 600; color: #697d78; line-height: 1; text-shadow: 0 1px 2px #fff; }
+.airflow { position: absolute; top: 19%; left: 44%; width: 15%; height: 23%; opacity: .6; }
+.deviceCallout { position: absolute; z-index: 1; display: flex; align-items: center; gap: 7px; min-width: 108px; padding: 7px 9px; border: 1px solid #e9ebea; border-radius: 9px; background: #fffffff2; box-shadow: 0 2px 9px #0000000d; color: var(--landing-text); font-size: 10px; line-height: 1.2; }
+.deviceCallout svg { flex: none; color: var(--landing-brand); stroke-width: 1.8; }
+.deviceCallout span { display: flex; flex-direction: column; gap: 3px; white-space: nowrap; }
+.deviceCallout small { color: var(--landing-muted); font-size: 9px; font-variant-numeric: tabular-nums; }
+.bedroomCallout { top: 25%; left: 4%; }
+.airCallout { top: 5%; left: 37%; }
+.livingCallout { top: 25%; right: 4%; }
+.devicePin { position: absolute; z-index: 1; width: 9px; height: 9px; border: 2px solid #fff; border-radius: 50%; background: var(--landing-brand); box-shadow: 0 0 0 1px #477c70; }
+.bedroomPin { top: 49%; left: 21%; }
+.airPin { top: 21%; left: 50%; }
+.livingPin { top: 46%; left: 85%; }
+
+@media (max-width: 1100px) {
+  .heroInner { width: 90%; }
+}
+@media (max-width: 800px) {
+  .heroSection { --hero-header-height: 60px; }
+  .heroIntro { min-height: 0; padding: 56px 0 36px; }
+  .heroVisual { display: none; }
+}
+@media (max-width: 1200px) and (min-width: 1024px) {
+  .sidebar { flex-basis: 105px; }
+  .sidebarHeader { padding-left: 8px; padding-right: 8px; }
+  .sidebarTools { gap: 3px; }
+  .sidebarItem { gap: 6px; }
+  .messages { padding-left: 20px; padding-right: 20px; }
+}
+@media (max-width: 580px) {
+  .heroSection { --hero-canvas-width: 360; --hero-canvas-height: 300; }
+  .heroTitle { font-size: clamp(36px, 11vw, 44px); }
+  .heroDescription { margin-top: 22px; }
+  .heroActions { gap: 12px; margin-top: 28px; }
+  .heroPrimary { min-height: 46px; padding: 0 18px; gap: 18px; font-size: 13px; }
+  .agentScene { border-radius: 10px; }
+  .sidebar { display: none; }
+  .welcomePage { padding: 20px; }
+  .welcomeLogo { width: 36px; height: 36px; margin-bottom: 16px; }
+  .welcomeContent h2 { font-size: 19px; }
+  .welcomeContent p { font-size: 10px; }
+  .welcomeComposer { margin-top: 23px; }
+  .messages { padding: 36px 17px 12px; }
+  .agentReply, .user .bubble { font-size: 11px; }
+  .chatComposer { margin-right: 13px; margin-left: 13px; }
+  .panorama { border-radius: 9px; }
+  .deviceCallout { display: none; }
+  .devicePin { width: 7px; height: 7px; }
+  .acDisplay { font-size: 8px; }
+}

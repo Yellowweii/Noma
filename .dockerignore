@@ -1,0 +1,11 @@
+.git
+.env
+.env.*
+shenxun*.env
+bin
+dist
+*.exe
+*.log
+**/node_modules
+**/.next
+**/*.tsbuildinfo

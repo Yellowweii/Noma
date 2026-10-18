@@ -1,0 +1,230 @@
+.page {
+  container-type: inline-size;
+  background: var(--card);
+  color: var(--noma-text-primary);
+}
+
+.content {
+  width: calc(100% - 128px);
+  margin: 0 auto;
+  padding: 48px 0;
+}
+
+.connection h1 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 36px;
+}
+
+.description {
+  margin: 12px 0 0;
+  color: var(--noma-text-secondary);
+  font-size: 15px;
+  line-height: 24px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px 24px;
+  margin-top: 24px;
+}
+
+.connectButton {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 24px;
+  border-radius: var(--radius-pill);
+  background: var(--noma-brand);
+  color: var(--noma-text-inverse);
+  font-size: 15px;
+  line-height: 20px;
+  text-decoration: none;
+  transition: background-color 150ms ease;
+}
+
+.connectButton:hover {
+  background: var(--noma-brand-hover);
+}
+
+.tutorialLink {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 11px 24px;
+  border: 1px solid var(--noma-border);
+  border-radius: var(--radius-pill);
+  background: var(--card);
+  color: var(--noma-text-primary);
+  font-size: 15px;
+  line-height: 20px;
+  text-decoration: none;
+  transition: background-color 150ms ease;
+}
+
+.tutorialLink:hover {
+  background: var(--noma-surface-soft);
+}
+
+.quickStart {
+  margin-top: 40px;
+  padding-top: 32px;
+  border-top: 1px solid var(--noma-border);
+}
+
+.quickStart h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 30px;
+}
+
+.quickStart > .description {
+  margin-top: 8px;
+  font-size: 14px;
+}
+
+.steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 32px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step {
+  min-width: 0;
+  padding: 8px 32px 24px;
+}
+
+.step:first-child {
+  padding-left: 0;
+}
+
+.step:last-child {
+  padding-right: 0;
+}
+
+.step + .step {
+  border-left: 1px solid var(--noma-border);
+}
+
+.stepIcon {
+  display: block;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  margin-bottom: 16px;
+  color: var(--noma-text-primary);
+}
+
+.stepContent {
+  min-width: 0;
+}
+
+.stepContent h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 24px;
+}
+
+.stepContent h3 a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  user-select: none;
+  text-decoration: none;
+  transition: color 180ms;
+}
+
+.stepContent h3 a svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 2;
+  flex-shrink: 0;
+  transition: transform 180ms ease;
+}
+
+.stepContent h3 a:hover svg {
+  transform: translateX(2px);
+}
+
+.stepContent h3 a:hover {
+  color: var(--noma-brand);
+}
+
+.stepContent p {
+  margin: 4px 0 0;
+  color: var(--noma-text-secondary);
+  font-size: 14px;
+  line-height: 24px;
+}
+
+.page a:focus-visible {
+  outline: 2px solid var(--noma-brand);
+  outline-offset: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stepContent h3 a svg {
+    transition: none;
+  }
+}
+
+@container (max-width: 960px) {
+  .steps {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+
+  .step {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 0;
+  }
+
+  .step + .step {
+    border-left: 0;
+  }
+
+  .stepIcon {
+    margin-bottom: 0;
+  }
+}
+
+@media (max-width: 1024px) {
+  .content {
+    width: calc(100% - 48px);
+  }
+}
+
+@media (max-width: 640px) {
+  .content {
+    width: calc(100% - 32px);
+    padding-top: 24px;
+  }
+
+  .connection h1 {
+    font-size: 24px;
+    line-height: 32px;
+  }
+
+  .quickStart {
+    margin-top: 40px;
+  }
+
+}
+
+@media (max-width: 767px) {
+  .content {
+    padding-top: 8px;
+  }
+}

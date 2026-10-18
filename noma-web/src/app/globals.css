@@ -1,0 +1,332 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #fafbfc;
+  --foreground: #0f172a;
+  --card: #ffffff;
+  --border: #e2e8f0;
+  --muted: #64748b;
+
+  /* Noma Design Language v1.1 */
+  --noma-text-primary: #1d1d1f;
+  --noma-text-secondary: #6f7473;
+  --noma-text-tertiary: #9ca3a1;
+  --noma-border: #e9ebea;
+  --noma-surface-soft: #f2f3f2;
+  --noma-surface-brand: #f0f4f2;
+  --noma-surface-brand-active: #f0f3f1;
+  /* Brand · Action · Active — 见 docs/Noma Design System v1.0.md §8 */
+  --noma-brand: #477c70;
+  --noma-brand-hover: #3f6e63;
+  --noma-brand-focus: #d8e5df;
+  --noma-brand-focus-ring: rgba(71, 124, 112, 0.06);
+  --noma-action: #3f927b;
+  --noma-action-hover: #368f72;
+  --noma-action-surface: #edf7f2;
+  --noma-active: #22c58f;
+  --noma-active-surface: #e8faf4;
+  --noma-placeholder: #a7b1ae;
+  --noma-send-disabled-bg: #eef1f0;
+  --noma-send-disabled-text: #c9cfcc;
+  --noma-text-inverse: #ffffff;
+  --noma-toast-bg: #ffffff;
+  --noma-toast-text: var(--noma-text-primary);
+  --noma-toast-shadow: 0 8px 24px rgba(29, 29, 31, 0.16);
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-xl: 24px;
+  --radius-pill: 9999px;
+}
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* 完全隐藏原生滚动条（避免 Windows 箭头），由 ScrollArea 自绘滑块 */
+  .scrollbar-hidden {
+    overflow-anchor: none;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .scrollbar-hidden::-webkit-scrollbar {
+    display: none;
+    width: 0 !important;
+    height: 0 !important;
+    background: transparent;
+  }
+
+  .scrollbar-hidden::-webkit-scrollbar-thumb,
+  .scrollbar-hidden::-webkit-scrollbar-track,
+  .scrollbar-hidden::-webkit-scrollbar-corner {
+    display: none;
+    background: transparent;
+  }
+
+  .menu-pop-in {
+    transform-origin: top right;
+    animation: menu-pop-in 0.16s ease-out;
+  }
+
+  .menu-pop-in-up {
+    transform-origin: bottom right;
+    animation: menu-pop-in 0.16s ease-out;
+  }
+
+  .modal-pop-in {
+    animation: modal-pop-in 0.18s ease-out;
+  }
+
+  .toast-pop-in {
+    animation: toast-pop-in 0.2s ease-out;
+  }
+
+  .tooltip-pop-in {
+    transform-origin: top center;
+    animation: tooltip-pop-in 0.12s ease-out;
+  }
+
+  .tooltip-pop-in-up {
+    transform-origin: bottom center;
+    animation: tooltip-pop-in 0.12s ease-out;
+  }
+}
+
+@keyframes menu-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes modal-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes toast-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes tooltip-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.typing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 1.25rem;
+  color: var(--noma-text-primary);
+}
+
+.typing-indicator-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: currentColor;
+  opacity: 0.25;
+  animation: typing-dot 1.4s ease-in-out infinite;
+}
+
+.typing-indicator-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-indicator-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes typing-dot {
+  0%,
+  60%,
+  100% {
+    opacity: 0.25;
+  }
+  30% {
+    opacity: 1;
+  }
+}
+
+.markdown-message {
+  word-break: break-word;
+}
+
+.markdown-message > :first-child {
+  margin-top: 0;
+}
+
+.markdown-message > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown-message p {
+  margin: 0;
+}
+
+.markdown-message p + p {
+  margin-top: 1.25em;
+}
+
+.markdown-message ul,
+.markdown-message ol {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.markdown-message p + ul,
+.markdown-message p + ol,
+.markdown-message ul + p,
+.markdown-message ol + p {
+  margin-top: 1em;
+}
+
+.markdown-message ul {
+  list-style-type: disc;
+}
+
+.markdown-message ol {
+  list-style-type: decimal;
+}
+
+.markdown-message ul ul {
+  list-style-type: circle;
+}
+
+.markdown-message li {
+  margin: 0.125rem 0;
+}
+
+.markdown-message li > p {
+  margin: 0;
+}
+
+.markdown-message h1,
+.markdown-message h2,
+.markdown-message h3,
+.markdown-message h4 {
+  margin: 0.75rem 0 0.375rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.markdown-message h1 {
+  font-size: 1.125rem;
+}
+
+.markdown-message h2 {
+  font-size: 1rem;
+}
+
+.markdown-message h3,
+.markdown-message h4 {
+  font-size: 0.875rem;
+}
+
+.markdown-message strong {
+  font-weight: 600;
+}
+
+.markdown-message a {
+  color: var(--noma-brand);
+  text-decoration: underline;
+}
+
+.markdown-message code {
+  border-radius: 0.25rem;
+  background: #f1f5f9;
+  padding: 0.125rem 0.375rem;
+  font-size: 0.8125rem;
+}
+
+.markdown-message pre {
+  margin: 0.5rem 0;
+  overflow-x: auto;
+  border-radius: 0.5rem;
+  background: #f8fafc;
+  padding: 0.75rem;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.markdown-message pre::-webkit-scrollbar {
+  display: none;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.markdown-message pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.markdown-message blockquote {
+  margin: 0.5rem 0;
+  border-left: 3px solid #e2e8f0;
+  padding-left: 0.75rem;
+  color: #64748b;
+}
+
+.markdown-message table {
+  margin: 0.5rem 0;
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+
+.markdown-message th,
+.markdown-message td {
+  border: 1px solid #e2e8f0;
+  padding: 0.375rem 0.5rem;
+  text-align: left;
+}
+
+.markdown-message th {
+  background: #f8fafc;
+  font-weight: 600;
+}
+
+.markdown-message hr {
+  margin: 0.75rem 0;
+  border: none;
+  border-top: 1px solid #e2e8f0;
+}

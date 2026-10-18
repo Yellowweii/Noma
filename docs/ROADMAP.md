@@ -1,0 +1,11 @@
+# 接下来如何接入 Noma Cloud
+
+本次只创建 Noma Public，没有改动相邻 Noma Private。
+
+1. **云端工具执行边界**：当前 Private 的 `internal/handler/handler.go` 在 `SendMessage` 中注入用户 HA Client；`internal/service/agent/service.go` 的 `ChatRequest.HA` 和 `hatool.go` 直接调用 HA。规划、目录读取及上下文流水线也依赖 HA Client。需要为这些路径提供统一执行接口，不能只替换最终 `executeHATool`，否则云端仍会访问局域网设备。
+2. **Local turn 生命周期**：在云端增加协议文档中的三个端点。需要保存暂停的 Agent 轮次、待执行调用、有效期、关联用户 / 家庭 / 会话，并通过持久化状态支持多副本及崩溃恢复。不要直接公开 LLM provider 原始续接能力。
+3. **保留现有商业与记忆逻辑**：复用云端登录、账号归属、配额、历史会话和 Memory OS。Local 结果需作为不可信工具数据处理，服务端校验。Private 原有 Cloud / FRP 路径应保留并分别验证。
+4. **真实联调**：先 staging 账号与模拟 HA，再用用户授权的一个测试实体完成读取、控制、状态回读、超时与重复结果测试。不能对真实设备自动重放测试。
+5. **发布前能力**：补持久化执行日志、实例 / 家庭绑定及撤销、Clerk 合适的本地登录流程、云端会话恢复，再迭代现有产品的前端体验。许可证由项目所有者确定。
+
+当前已直接复用 Private 的 Next.js 前端、组件、样式与静态资源，并提供原 `/api/v1` 请求形状的本地适配。HA 设置页改为本地连接检测，其余页面沿用原实现。记忆和会话 CRUD 继续使用云端原接口；消息发送进入 Local 协议，不回退到云端 FRP 控制。语音代理、Clerk 本地回调与真实设备能力仍需联调。

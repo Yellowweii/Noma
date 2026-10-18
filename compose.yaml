@@ -1,0 +1,37 @@
+services:
+  noma-web:
+    build:
+      context: ./noma-web
+      args:
+        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}
+    restart: unless-stopped
+    init: true
+    environment:
+      NOMA_INTERNAL_API_URL: http://noma-local:3000/api/v1
+    expose: ["3000"]
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+  noma-local:
+    build: .
+    restart: unless-stopped
+    init: true
+    depends_on:
+      - noma-web
+    ports:
+      - "${NOMA_LOCAL_BIND:-127.0.0.1}:${NOMA_LOCAL_PORT:-3000}:3000"
+    environment:
+      NOMA_LOCAL_ADDR: 0.0.0.0:3000
+      NOMA_WEB_URL: http://noma-web:3000
+      NOMA_LOCAL_ACCESS_KEY: ${NOMA_LOCAL_ACCESS_KEY:?Set NOMA_LOCAL_ACCESS_KEY in .env}
+      NOMA_CLOUD_URL: ${NOMA_CLOUD_URL:-https://noma-ai.cloud}
+      NOMA_HA_URL: ${NOMA_HA_URL:-}
+      NOMA_HA_TOKEN: ${NOMA_HA_TOKEN:-}
+      NOMA_HA_ALLOWED_ENTITIES: ${NOMA_HA_ALLOWED_ENTITIES:-}
+      NOMA_LOCAL_SECURE_COOKIE: ${NOMA_LOCAL_SECURE_COOKIE:-false}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true

@@ -1,0 +1,42 @@
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 148px;
+  min-height: 50px;
+  padding: 0 30px;
+  border: 1px solid var(--landing-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--landing-text);
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 180ms;
+}
+.trigger:hover { background: var(--landing-soft); }
+.dialog {
+  width: calc(100% - 32px);
+  max-width: 400px;
+  max-height: calc(100dvh - 32px);
+  margin: auto;
+  padding: 24px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--landing-border);
+  border-radius: 20px;
+  background: var(--landing-surface);
+  color: var(--landing-text);
+  text-align: left;
+  box-shadow: 0 24px 80px #172c2526;
+}
+.dialog::backdrop { background: #15251f66; }
+.header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.header h2 { margin: 0; font-size: 20px; font-weight: 600; line-height: 1.4; }
+.description { margin: 6px 0 0; color: var(--landing-muted); font-size: 13px; line-height: 1.8; }
+.qrcode { display: block; width: 100%; max-width: 300px; height: auto; margin: 8px auto 0; }
+.hint { margin: 8px 0 0; color: var(--landing-muted); font-size: 13px; line-height: 1.8; text-align: center; }
+@media (max-width: 580px) {
+  .trigger { min-height: 46px; padding: 0 18px; font-size: 13px; }
+  .dialog { padding: 20px; }
+}

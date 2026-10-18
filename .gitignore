@@ -1,0 +1,13 @@
+.env
+.env.*
+!.env.example
+shenxun*.env
+bin/
+dist/
+coverage.out
+*.exe
+*.log
+.DS_Store
+node_modules/
+.next/
+*.tsbuildinfo
