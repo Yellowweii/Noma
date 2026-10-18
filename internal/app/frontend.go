@@ -117,20 +117,12 @@ func (s *Server) frontendAuth(ctx context.Context, w http.ResponseWriter, r *htt
 	switch {
 	case r.Method == "POST" && (path == "/auth/otp/send" || path == "/auth/phone/send-code"):
 		s.forwardCloud(ctx, w, r, nil)
-	case r.Method == "POST" && (path == "/auth/otp/verify" || path == "/auth/phone/login" || path == "/auth/clerk"):
+	case r.Method == "POST" && (path == "/auth/otp/verify" || path == "/auth/phone/login"):
 		var input map[string]any
-		if path != "/auth/clerk" && !decode(w, r, &input) {
+		if !decode(w, r, &input) {
 			return true
 		}
-		clerkToken := ""
-		if path == "/auth/clerk" {
-			clerkToken = strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-			if clerkToken == "" {
-				fail(w, 401, "缺少 Clerk 登录凭证")
-				return true
-			}
-		}
-		account, body, err := s.cloud.Authenticate(ctx, "/api/v1"+path, clerkToken, input)
+		account, body, err := s.cloud.Authenticate(ctx, "/api/v1"+path, "", input)
 		if err != nil {
 			cloudFailure(w, err)
 			return true

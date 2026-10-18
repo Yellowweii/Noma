@@ -1,8 +1,8 @@
 # Noma Local 远程工具协议 v1（提案）
 
-**状态：Public 本地侧已实现；当前 Noma Private 尚未实现这些 Local 端点。**
+**状态：Public 本地侧已实现；官网授权码登录的云端代码已补齐，生产发布后需验证真实账号。Local 聊天与工具端点仍待云端对接。**
 
-所有云端请求都由本地后端发起，经 HTTPS 连接固定配置的 cloud origin。不向云端发送 HA URL、HA Token 或本地访问密钥。不接受云端指示的新工具地址。浏览器只访问本地同源服务。
+所有云端请求都由本地后端发起，经 HTTPS 连接固定配置的 cloud origin。不向云端发送 HA URL 或 HA Token。不接受云端指示的新工具地址。浏览器只访问本地同源服务。
 
 ## 已有认证接口
 
@@ -11,13 +11,41 @@
 - 登录返回 `{ "access_token": "...", "expires_in": 900 }`，通过 `Set-Cookie` 返回 `noma_refresh_token`。
 - `POST /api/v1/auth/refresh` 使用本地后端持有的 refresh Cookie；`POST /api/v1/auth/logout` 撤销该 Cookie。
 - 后续 Local API 使用 `Authorization: Bearer <Noma access token>`。浏览器只收到本地 HttpOnly / SameSite=Strict 会话 Cookie，不收到云端 token。
-- 原前端登录入口已复用，增加手机验证码及 Clerk exchange 代理；云端 Token 留在后端。Clerk 仍需配置本地回调和允许来源，不能复用云端网站 Cookie 或要求用户粘贴访问令牌。
+- 邮箱和手机验证码仍由本地后端代发。Google 登录不在本地初始化 Clerk，也不传递 Clerk Session Token。浏览器跳到固定云端来源完成登录，本地后端再用一次性授权码兑换 Noma 访问凭证。云端 Token 留在后端。
+
+### 官网授权登录
+
+本地 `GET /api/local/auth/google?next=/agent` 只接受本机发起的请求。它生成 `state` 与 PKCE `code_verifier`，把 `state` 放进仅用于 `/login/cloud-callback` 的 HttpOnly、SameSite=Lax Cookie，然后 302 到：
+
+`GET {cloud}/local/authorize?response_type=code&client_id=noma-local&redirect_uri={本地}/login/cloud-callback&state=...&code_challenge=...&code_challenge_method=S256`
+
+`redirect_uri` 由本地根据当前 Host 生成，路径固定为 `/login/cloud-callback`。`next` 只保存在本地，不发给云端。没有客户端密钥。
+
+云端页面在 `https://noma-ai.cloud` 上完成 Clerk 登录，并让用户选择账号。授权码一次性、最长两分钟，绑定该用户、`redirect_uri`、`code_challenge` 和 `client_id=noma-local`。回跳只携带 `code` 与 `state`，或 `error` 与 `state`。不回传 Clerk Session Token、访问令牌或云端 Cookie。`redirect_uri` 必须是 loopback、localhost 或私网地址，路径恰好为 `/login/cloud-callback`，不能带用户信息、查询或片段。
+
+官网授权页复用既有 Google 账号选择与登录回调，完成后仅在官网使用云端 access token 调用 `POST /api/v1/local/oauth/authorize`；请求 JSON 包含上述六个授权参数。接口校验登录身份、固定客户端、回调地址、state 和 S256 challenge，返回 `{ "redirect_url": "{本地}/login/cloud-callback?code=...&state=..." }`。该接口不由本地网关代理，也不把云端登录凭证传给本地浏览器。授权码摘要作为 Redis key，授权记录两分钟过期；兑换时原子消费，禁止并发重复兑换。
+
+本地校验 Cookie 中的 `state` 后，由后端调用：
+
+`POST /api/v1/local/oauth/token`
+
+```json
+{
+  "grant_type": "authorization_code",
+  "code": "one-time-code",
+  "redirect_uri": "http://127.0.0.1:3100/login/cloud-callback",
+  "client_id": "noma-local",
+  "code_verifier": "pkce-verifier"
+}
+```
+
+成功响应与验证码登录相同：`access_token`、`expires_in`、`user_id`，以及 `Set-Cookie: noma_refresh_token`。云端必须校验 S256 PKCE、精确的 `redirect_uri`，并拒绝重复使用的授权码。本地随后只给浏览器建立现有 HttpOnly 会话。
 
 ## 原前端兼容层
 
 浏览器仍请求原 `/api/v1` 路径，本地网关维护方法 / 路径白名单：账号、记忆和会话管理转发云端，`/home/*` 与 `/ha/*` 由本地处理。HA 授权 / FRP 设置不转发云端。
 
-账号登录 / refresh 响应中的 `access_token` 替换为 `noma-local-cookie-session` 标记，不是云端 JWT，不能脱离本地 HttpOnly Cookie 使用。云端登录无需本地密钥，登录成功创建仅持有该账号凭证的浏览器会话；已登录后 `POST /api/local/unlock` 校验本地密钥给当前会话追加 HA 权限，保留云端登录身份。账号退出同时清除云端凭证及家庭授权；`/api/local/auth/logout` 可进一步删除本地会话。
+账号登录 / refresh 响应中的 `access_token` 替换为 `noma-local-cookie-session` 标记，不是云端 JWT，不能脱离本地 HttpOnly Cookie 使用。本地不再使用访问密钥，登录成功创建仅持有该账号凭证的浏览器会话；已登录后 `POST /api/local/ha/authorize`（JSON body `{}`，同源请求）给当前会话启用 HA 权限，保留云端登录身份。账号退出同时清除云端凭证及家庭授权；`/api/local/auth/logout` 可进一步删除本地会话。
 
 本地实例不提供游客访问。未登录业务 API（含 `/api/local/status`、设备授权接口）返回 401；`/guest/*` 和 `/chat/import` 即使登录后也不转发云端。仅云端验证码 / 登录 / refresh 等认证入口和健康检查允许在登录前调用，同源与 Host 校验始终生效。页面除登录与回调、法律条款和必要静态资源外，未登录均跳转 `/login?next=...`，原始目标路径保留用于登录后恢复。
 
@@ -27,7 +55,7 @@
 
 ### 登录后的纯聊天（云端待实现）
 
-`POST /api/v1/local/chat/sessions/{session_id}/messages`，使用后端持有的云端 Bearer 凭证，body 为 `{ "content": "你好", "request_id": "...", "regenerate": false, "replace_assistant_id": "..." }`。网关校验消息长度和请求 / 会话 ID，仅发送这些字段，不转发查询参数、本地 Cookie、HA 地址、实体或密钥。
+`POST /api/v1/local/chat/sessions/{session_id}/messages`，使用后端持有的云端 Bearer 凭证，body 为 `{ "content": "你好", "request_id": "...", "regenerate": false, "replace_assistant_id": "..." }`。网关校验消息长度和请求 / 会话 ID，仅发送这些字段，不转发查询参数、本地 Cookie、HA 地址、实体或 Token。
 
 云端必须沿用账号归属、额度、历史、记忆和 SSE `meta` / `token` / `done` 事件，同时禁止 HA Client 注入、默认 HA Client 回退、设备目录 / 状态读取与设备工具执行。仅令请求中的 HA 指针为空不足以保证此边界。`request_id` 用于纯聊天请求去重，重生成保持原消息归属校验。此接口不得根据消息文本或查询参数重新开启设备工具。
 
@@ -143,3 +171,7 @@
 - 云端同样需要以 user / instance / request_id 绑定 turn，确保重复发起不产生两轮 Agent、重复扣费或重下发操作。当前协议只通过用户凭证隔离实例；独立家庭设备绑定和撤销能力为后续生产工作。
 - 用户断开后停止新工具调用，但已发送到 HA 的操作可能已经执行。错误信息不可被解释为设备操作没有发生。
 - 云端维持现有记忆、对话落库和用量规则；只在实际工具结果返回后记录执行证据。
+
+## 本地部署默认值
+
+无需 `.env` 或访问密钥。默认云端 `https://noma-ai.cloud`，原生及 Docker 对外入口 `127.0.0.1:3100`。可选 HA 地址、Token 和实体白名单由本地后端读取 `data/local.json`（Docker 为 `/data/local.json`），不通过浏览器设置。旧 `/api/local/unlock` 已移除。设备启用接口仅接受空 JSON 对象，未登录返回 401，跨站 / 无 Origin 请求返回 403，额外字段返回 400；退出或切换账号清除本浏览器的启用状态，工具与实体白名单仍独立执行。

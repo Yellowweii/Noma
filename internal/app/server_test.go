@@ -2,6 +2,8 @@ package app
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -16,7 +18,6 @@ import (
 	"noma.local/public/internal/protocol"
 )
 
-const testKey = "test-only-access-key-long-enough"
 const requestID = "request-00000000000001"
 const sessionID = "session-00000000000001"
 const turnID = "turn-0000000000000001"
@@ -29,13 +30,18 @@ type fixtureOptions struct {
 }
 type fixture struct {
 	local                                           *httptest.Server
+	cloudURL                                        string
 	client                                          *http.Client
 	controls, turns, results, refreshes, haRequests atomic.Int32
+	oauthUses                                       atomic.Int32
+	oauthMu                                         sync.Mutex
+	oauthChallenges                                 map[string]bool
+	oauthCodes                                      map[string]int
 }
 
 func newFixture(t *testing.T, options fixtureOptions) *fixture {
 	t.Helper()
-	f := &fixture{}
+	f := &fixture{oauthChallenges: map[string]bool{}, oauthCodes: map[string]int{}}
 	if options.entity == "" {
 		options.entity = "light.allowed"
 	}
@@ -78,10 +84,10 @@ func newFixture(t *testing.T, options fixtureOptions) *fixture {
 	}
 	cloud := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
-		if strings.Contains(string(body), "test-ha-secret") || strings.Contains(string(body), testKey) || strings.Contains(r.Header.Get("Authorization"), "test-ha-secret") {
+		if strings.Contains(string(body), "test-ha-secret") || strings.Contains(r.Header.Get("Authorization"), "test-ha-secret") {
 			t.Error("local secrets reached cloud")
 		}
-		if strings.HasPrefix(r.URL.Path, "/api/v1/local/") && r.Header.Get("Authorization") != "Bearer test-cloud-access" {
+		if strings.HasPrefix(r.URL.Path, "/api/v1/local/") && r.URL.Path != "/api/v1/local/oauth/token" && r.Header.Get("Authorization") != "Bearer test-cloud-access" {
 			t.Error("cloud bearer token missing")
 		}
 		switch r.URL.Path {
@@ -102,6 +108,43 @@ func newFixture(t *testing.T, options fixtureOptions) *fixture {
 			w.Header().Set("Content-Type", "text/event-stream")
 			http.SetCookie(w, &http.Cookie{Name: "noma_refresh_token", Value: "test-refresh-token"})
 			_, _ = w.Write([]byte("event: message\ndata: {\"type\":\"token\",\"content\":\"你好\"}\n\nevent: message\ndata: {\"type\":\"done\"}\n\n"))
+		case "/local/authorize":
+			if r.Method != "GET" || r.URL.Query().Get("code_challenge") == "" {
+				t.Errorf("invalid authorize request")
+			}
+			f.oauthMu.Lock()
+			f.oauthChallenges[r.URL.Query().Get("code_challenge")] = true
+			f.oauthMu.Unlock()
+			w.WriteHeader(http.StatusNoContent)
+		case "/api/v1/local/oauth/token":
+			f.oauthUses.Add(1)
+			if r.Header.Get("Authorization") != "" || strings.Contains(string(body), "clerk") {
+				t.Error("local login exchange sent a bearer token")
+			}
+			var in struct {
+				GrantType   string `json:"grant_type"`
+				Code        string `json:"code"`
+				RedirectURI string `json:"redirect_uri"`
+				ClientID    string `json:"client_id"`
+				Verifier    string `json:"code_verifier"`
+			}
+			if json.Unmarshal(body, &in) != nil || in.GrantType != "authorization_code" || in.ClientID != "noma-local" || !strings.HasSuffix(in.RedirectURI, "/login/cloud-callback") {
+				http.Error(w, "invalid oauth token request", http.StatusBadRequest)
+				return
+			}
+			sum := sha256.Sum256([]byte(in.Verifier))
+			challenge := base64.RawURLEncoding.EncodeToString(sum[:])
+			f.oauthMu.Lock()
+			known := f.oauthChallenges[challenge]
+			f.oauthCodes[in.Code]++
+			uses := f.oauthCodes[in.Code]
+			f.oauthMu.Unlock()
+			if !known || uses != 1 {
+				http.Error(w, "pkce or replay rejected", http.StatusBadRequest)
+				return
+			}
+			http.SetCookie(w, &http.Cookie{Name: "noma_refresh_token", Value: "test-refresh-token", Secure: true, HttpOnly: true})
+			writeJSON(w, 200, map[string]any{"access_token": "test-cloud-access", "expires_in": 3600, "user_id": "test-user", "user": map[string]string{"user_id": "test-user", "name": "Test"}})
 		case "/api/v1/auth/otp/send":
 			writeJSON(w, 200, map[string]bool{"ok": true})
 		case "/api/v1/auth/otp/verify":
@@ -170,7 +213,8 @@ func newFixture(t *testing.T, options fixtureOptions) *fixture {
 		}
 	}))
 	t.Cleanup(cloud.Close)
-	server, err := New(Config{AccessKey: testKey, CloudURL: cloud.URL, HAURL: ha.URL, HAToken: "test-ha-secret", AllowedEntities: []string{"light.allowed"}})
+	f.cloudURL = cloud.URL
+	server, err := New(Config{CloudURL: cloud.URL, HAURL: ha.URL, HAToken: "test-ha-secret", AllowedEntities: []string{"light.allowed"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -312,7 +356,7 @@ func TestLocalAuthenticationOriginAndHostChecks(t *testing.T) {
 	}
 	f.login(t)
 	for _, variant := range []string{"foreign origin", "no origin", "DNS rebinding"} {
-		req, _ := http.NewRequest("POST", f.local.URL+"/api/local/ha/check", strings.NewReader(`{}`))
+		req, _ := http.NewRequest("POST", f.local.URL+"/api/local/ha/authorize", strings.NewReader(`{}`))
 		req.Header.Set("Content-Type", "application/json")
 		if variant == "foreign origin" {
 			req.Header.Set("Origin", "https://attacker.invalid")
@@ -332,13 +376,11 @@ func TestLocalAuthenticationOriginAndHostChecks(t *testing.T) {
 	}
 }
 
-func TestConfigRejectsInsecureCloudAndExampleKey(t *testing.T) {
+func TestConfigRejectsInsecureCloud(t *testing.T) {
 	for _, cfg := range []Config{
-		{AccessKey: "short", CloudURL: "https://example.invalid"},
-		{AccessKey: "replace-with-a-random-key-at-least-24-characters", CloudURL: "https://example.invalid"},
-		{AccessKey: testKey, CloudURL: "http://cloud.example.invalid"},
-		{AccessKey: testKey, CloudURL: "https://user:password@example.invalid"},
-		{AccessKey: testKey, CloudURL: "https://example.invalid/api/v1"},
+		{CloudURL: "http://cloud.example.invalid"},
+		{CloudURL: "https://user:password@example.invalid"},
+		{CloudURL: "https://example.invalid/api/v1"},
 	} {
 		if _, err := New(cfg); err == nil {
 			t.Fatal("invalid config accepted")

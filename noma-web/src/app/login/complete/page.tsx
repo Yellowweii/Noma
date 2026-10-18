@@ -9,7 +9,7 @@ import {
 } from "@/components/login/LoginEnteringScreen";
 import { api } from "@/lib/api";
 import { prepareFreshLoginLanding } from "@/lib/activeSessionStorage";
-import { getClerkSessionToken, safeNextPath } from "@/lib/clerk";
+import { safeNextPath } from "@/lib/safeNext";
 
 function afterPaint() {
   return new Promise<void>((resolve) => {
@@ -22,6 +22,7 @@ function CompleteLoginContent() {
   const searchParams = useSearchParams();
   const method = searchParams.get("method");
   const isOTP = method === "phone" || method === "email";
+  const isCloud = method === "google";
   const loginName = method === "phone" ? "手机号登录" : method === "email" ? "邮箱登录" : "Google 登录";
   const otpNext = safeNextPath(searchParams.get("next"));
   const started = useRef(false);
@@ -30,35 +31,32 @@ function CompleteLoginContent() {
   const [error, setError] = useState("");
 
   const exchange = useCallback(async () => {
+    if (!isOTP && !isCloud) {
+      setError("请返回登录页重新登录");
+      setBusy(false);
+      return;
+    }
     setBusy(true);
     setError("");
     setActiveStep(2);
     try {
-      if (isOTP) {
-        await api.getMe();
-      } else {
-        const token = await getClerkSessionToken();
-        if (!token) throw new Error("登录已过期，请返回登录页重试");
-        await api.loginClerk(token);
-        prepareFreshLoginLanding();
-      }
+      await api.getMe();
+      if (isCloud) prepareFreshLoginLanding();
       setActiveStep(4);
       await afterPaint();
-      const next = isOTP ? otpNext : safeNextPath(sessionStorage.getItem("noma_login_next"));
-      if (!isOTP) sessionStorage.removeItem("noma_login_next");
-      router.replace(next);
+      router.replace(otpNext);
     } catch (err) {
       setError(err instanceof Error ? err.message : "登录失败，请重试");
       setBusy(false);
     }
-  }, [isOTP, otpNext, router]);
+  }, [isCloud, isOTP, otpNext, router]);
 
   useEffect(() => {
     if (started.current) return;
     started.current = true;
-    router.prefetch(isOTP ? otpNext : safeNextPath(sessionStorage.getItem("noma_login_next")));
+    if (isOTP || isCloud) router.prefetch(otpNext);
     void exchange();
-  }, [exchange, isOTP, otpNext, router]);
+  }, [exchange, isCloud, isOTP, otpNext, router]);
 
   if (busy) {
     return <LoginEnteringScreen activeStep={activeStep} loginLabel={`${loginName}已完成`} />;

@@ -15,9 +15,9 @@ import (
 func frontendLogin(t *testing.T, f *fixture) {
 	t.Helper()
 	frontendCloudLogin(t, f)
-	status, body, _ := f.request(t, "POST", "/api/local/unlock", map[string]string{"key": testKey})
+	status, body, _ := f.request(t, "POST", "/api/local/ha/authorize", map[string]any{})
 	if status != 200 {
-		t.Fatalf("unlock: %d %s", status, body)
+		t.Fatalf("enable: %d %s", status, body)
 	}
 }
 
@@ -34,9 +34,9 @@ func frontendCloudLogin(t *testing.T, f *fixture) {
 
 func TestAnonymousAPIsCannotBypassCloudLogin(t *testing.T) {
 	f := newFixture(t, fixtureOptions{})
-	status, body, _ := f.request(t, "POST", "/api/local/unlock", map[string]string{"key": testKey})
+	status, body, _ := f.request(t, "POST", "/api/local/ha/authorize", map[string]any{})
 	if status != 401 {
-		t.Fatalf("household key replaced account login: %d %s", status, body)
+		t.Fatalf("device enablement replaced account login: %d %s", status, body)
 	}
 	for _, loggedIn := range []bool{false, true} {
 		if loggedIn {
@@ -62,9 +62,17 @@ func TestAnonymousAPIsCannotBypassCloudLogin(t *testing.T) {
 	}
 }
 
-func TestCloudLoginDoesNotGrantHouseholdAccessAndUnlockPreservesAccount(t *testing.T) {
+func TestCloudLoginDoesNotGrantHouseholdAccessAndEnablingPreservesAccount(t *testing.T) {
 	f := newFixture(t, fixtureOptions{})
 	frontendCloudLogin(t, f)
+	status, _, _ := f.request(t, "POST", "/api/local/ha/authorize", map[string]string{"token": "test-only-not-accepted"})
+	if status != 400 {
+		t.Fatal("device enablement accepted arbitrary configuration fields")
+	}
+	status, _, _ = f.request(t, "POST", "/api/local/unlock", map[string]any{})
+	if status != 403 {
+		t.Fatal("removed unlock route unexpectedly enabled device access")
+	}
 	for _, path := range []string{"/api/v1/me", "/api/v1/memory/overview", "/api/v1/auth/session"} {
 		status, body, _ := f.request(t, "GET", path, nil)
 		if status != 200 {
@@ -94,13 +102,9 @@ func TestCloudLoginDoesNotGrantHouseholdAccessAndUnlockPreservesAccount(t *testi
 	if f.haRequests.Load() != 0 || f.turns.Load() != 0 {
 		t.Fatal("locked browser contacted HA or ran a tool turn")
 	}
-	status, _, _ := f.request(t, "POST", "/api/local/unlock", map[string]string{"key": "wrong"})
-	if status != 401 {
-		t.Fatal("wrong household key accepted")
-	}
-	status, body, _ := f.request(t, "POST", "/api/local/unlock", map[string]string{"key": testKey})
+	status, body, _ := f.request(t, "POST", "/api/local/ha/authorize", map[string]any{})
 	if status != 200 {
-		t.Fatalf("unlock: %d %s", status, body)
+		t.Fatalf("enable: %d %s", status, body)
 	}
 	status, body, _ = f.request(t, "GET", "/api/v1/me", nil)
 	if status != 200 || !strings.Contains(body, "test-user") {
@@ -221,7 +225,7 @@ func TestGatewayServesReusedNextFrontendWithoutInterceptingItsAssets(t *testing.
 		_ = json.NewEncoder(w).Encode(map[string]string{"route": r.URL.Path})
 	}))
 	defer frontend.Close()
-	server, err := New(Config{AccessKey: testKey, CloudURL: "http://127.0.0.1:9", WebURL: frontend.URL})
+	server, err := New(Config{CloudURL: "http://127.0.0.1:9", WebURL: frontend.URL})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -57,7 +57,6 @@ async function fetchWithAuth(
     res.status === 401 &&
     !retried &&
     !path.startsWith("/auth/otp/") &&
-    !path.startsWith("/auth/clerk") &&
     !path.startsWith("/auth/refresh")
   ) {
     const ok = await recoverAccessToken();
@@ -214,12 +213,6 @@ export const api = {
   loginPhone: (phone: string, code: string) =>
     authRequest<AuthResponse>("/auth/phone/login", {
       method: "POST", body: JSON.stringify({ phone, code }),
-    }),
-
-  loginClerk: (token: string) =>
-    authRequest<AuthResponse>("/auth/clerk", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
     }),
 
   logout: logoutSession,

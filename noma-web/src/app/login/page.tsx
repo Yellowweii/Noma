@@ -5,15 +5,15 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, Suspense } from "react";
 import { Loader2, Mail, ShieldCheck, Smartphone } from "lucide-react";
 import { NomaLogo } from "@/components/NomaLogo";
-import {
-  clerkPublishableKey,
-  getClerk,
-  hasClerkLoginIntent,
-  safeNextPath,
-  startGoogleLogin,
-} from "@/lib/clerk";
 import { api } from "@/lib/api";
+import { safeNextPath } from "@/lib/safeNext";
 import styles from "./login.module.css";
+
+const cloudLoginErrors: Record<string, string> = {
+  state: "登录已失效，请重新使用 Google 登录",
+  cloud: "暂时无法完成官网登录，请重试或使用手机号、邮箱登录",
+  denied: "已取消 Google 登录",
+};
 
 function getOtpErrorMessage(error: unknown, fallback: string) {
   if (!(error instanceof Error)) return fallback;
@@ -32,11 +32,11 @@ function LoginForm() {
   const [phone, setPhone] = useState("");
   const [method, setMethod] = useState<"email" | "phone">("phone");
   const [code, setCode] = useState("");
-  const [loadingMethod, setLoadingMethod] = useState<"otp" | "google" | null>(null);
+  const [loadingMethod, setLoadingMethod] = useState<"otp" | null>(null);
   const [sending, setSending] = useState(false);
   const [cooldown, setCooldown] = useState(0);
   const [phoneCooldown, setPhoneCooldown] = useState(0);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(cloudLoginErrors[searchParams.get("error") || ""] || null);
   const [info, setInfo] = useState<string | null>(null);
   const loading = loadingMethod !== null;
 
@@ -65,24 +65,6 @@ function LoginForm() {
     }
     return true;
   }
-
-  useEffect(() => {
-    if (!clerkPublishableKey || !hasClerkLoginIntent()) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const clerk = await getClerk();
-        if (!cancelled && clerk.session) {
-          router.replace("/login/complete");
-        }
-      } catch {
-        // User can still use email login or retry Google.
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [router]);
 
   function validateEmail() {
     const value = email.trim();
@@ -137,17 +119,9 @@ function LoginForm() {
     }
   }
 
-  async function handleGoogleLogin() {
-    setLoadingMethod("google");
-    setError(null);
-    setInfo(null);
-    try {
-      await startGoogleLogin(nextPath);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Google 登录失败");
-    } finally {
-      setLoadingMethod(null);
-    }
+  function handleGoogleLogin() {
+    const params = new URLSearchParams({ next: nextPath });
+    window.location.assign(`/api/local/auth/google?${params.toString()}`);
   }
 
   const form = (
@@ -233,28 +207,22 @@ function LoginForm() {
         </button>
       </form>
 
-      {clerkPublishableKey && (
-        <>
-          <div className="mb-4 mt-5 flex items-center gap-3">
-            <div className="h-px flex-1 bg-[#e5e9ed]" />
-            <span className="shrink-0 text-xs leading-5 text-[#84909f]">或使用其他方式登录</span>
-            <div className="h-px flex-1 bg-[#e5e9ed]" />
-          </div>
+      <div className="mb-4 mt-5 flex items-center gap-3">
+        <div className="h-px flex-1 bg-[#e5e9ed]" />
+        <span className="shrink-0 text-xs leading-5 text-[#84909f]">或使用其他方式登录</span>
+        <div className="h-px flex-1 bg-[#e5e9ed]" />
+      </div>
 
-          <button type="button" onClick={handleGoogleLogin} disabled={loading}
-            className="flex h-11 w-full items-center justify-center gap-2.5 rounded-xl border border-[#d9dfe5] text-sm font-normal text-[#14212b] transition-colors hover:bg-[#f8faf9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-noma-brand disabled:cursor-not-allowed disabled:opacity-60">
-            {loadingMethod === "google" ? <Loader2 aria-hidden="true" className="h-5 w-5 animate-spin" /> : (
-              <svg aria-hidden="true" className="h-5 w-5" viewBox="0 0 24 24">
-                <path fill="#4285F4" d="M21.6 12.23c0-.71-.06-1.39-.18-2.05H12v3.88h5.38a4.6 4.6 0 0 1-2 3.02v2.51h3.24c1.89-1.74 2.98-4.31 2.98-7.36Z" />
-                <path fill="#34A853" d="M12 22c2.7 0 4.96-.9 6.62-2.41l-3.24-2.51c-.9.6-2.04.96-3.38.96-2.6 0-4.81-1.76-5.6-4.12H3.05v2.59A10 10 0 0 0 12 22Z" />
-                <path fill="#FBBC05" d="M6.4 13.92a6 6 0 0 1 0-3.84V7.49H3.05a10 10 0 0 0 0 9.02l3.35-2.59Z" />
-                <path fill="#EA4335" d="M12 5.96c1.47 0 2.79.51 3.82 1.51l2.87-2.87A9.6 9.6 0 0 0 12 2a10 10 0 0 0-8.95 5.49l3.35 2.59C7.19 7.72 9.4 5.96 12 5.96Z" />
-              </svg>
-            )}
-            使用 Google 登录
-          </button>
-        </>
-      )}
+      <button type="button" onClick={handleGoogleLogin} disabled={loading}
+        className="flex h-11 w-full items-center justify-center gap-2.5 rounded-xl border border-[#d9dfe5] text-sm font-normal text-[#14212b] transition-colors hover:bg-[#f8faf9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-noma-brand disabled:cursor-not-allowed disabled:opacity-60">
+        <svg aria-hidden="true" className="h-5 w-5" viewBox="0 0 24 24">
+          <path fill="#4285F4" d="M21.6 12.23c0-.71-.06-1.39-.18-2.05H12v3.88h5.38a4.6 4.6 0 0 1-2 3.02v2.51h3.24c1.89-1.74 2.98-4.31 2.98-7.36Z" />
+          <path fill="#34A853" d="M12 22c2.7 0 4.96-.9 6.62-2.41l-3.24-2.51c-.9.6-2.04.96-3.38.96-2.6 0-4.81-1.76-5.6-4.12H3.05v2.59A10 10 0 0 0 12 22Z" />
+          <path fill="#FBBC05" d="M6.4 13.92a6 6 0 0 1 0-3.84V7.49H3.05a10 10 0 0 0 0 9.02l3.35-2.59Z" />
+          <path fill="#EA4335" d="M12 5.96c1.47 0 2.79.51 3.82 1.51l2.87-2.87A9.6 9.6 0 0 0 12 2a10 10 0 0 0-8.95 5.49l3.35 2.59C7.19 7.72 9.4 5.96 12 5.96Z" />
+        </svg>
+        使用 Google 登录
+      </button>
 
       <p className="mt-5 text-center text-xs leading-5 text-[#8b95a4]">
         登录即表示您同意我们的{" "}

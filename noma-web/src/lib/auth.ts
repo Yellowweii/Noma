@@ -1,4 +1,3 @@
-import { clerkPublishableKey, getClerkSessionToken, hasClerkLoginIntent, signOutClerk } from "./clerk";
 import { clearLoginSessionState } from "./activeSessionStorage";
 
 const API_BASE = "/api/v1";
@@ -60,40 +59,8 @@ export async function refreshAccessToken(): Promise<boolean> {
   return refreshPromise;
 }
 
-async function exchangeClerkSession(): Promise<boolean> {
-  if (!clerkPublishableKey || !hasClerkLoginIntent()) return false;
-  try {
-    const token = await getClerkSessionToken();
-    if (!token) return false;
-    const res = await fetch(`${API_BASE}/auth/clerk`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      credentials: "include",
-    });
-    if (!res.ok) {
-      clearAccessToken();
-      return false;
-    }
-    const body = (await res.json()) as { access_token?: string; user_id?: string };
-    if (!body.access_token) {
-      clearAccessToken();
-      return false;
-    }
-    setAccessToken(body.access_token);
-    if (body.user_id) setUserId(body.user_id);
-    return true;
-  } catch {
-    clearAccessToken();
-    return false;
-  }
-}
-
 export async function recoverAccessToken(): Promise<boolean> {
   if (await refreshAccessToken()) return true;
-  if (await exchangeClerkSession()) return true;
   if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
     const next = window.location.pathname + window.location.search;
     window.location.replace(`/login?next=${encodeURIComponent(next)}`);
@@ -115,7 +82,6 @@ export async function logoutSession(): Promise<void> {
   } finally {
     clearAccessToken();
     clearLoginSessionState();
-    await signOutClerk();
   }
 }
 

@@ -151,6 +151,18 @@ func (c *Client) AccessToken(ctx context.Context, a *Account) (string, error) {
 	return a.AccessToken, nil
 }
 
+// ExchangeLocalLogin trades a one-time authorization code for Noma credentials.
+// The browser never supplies a Clerk session token or a client secret.
+func (c *Client) ExchangeLocalLogin(ctx context.Context, code, redirectURI, verifier string) (*Account, map[string]any, error) {
+	return c.Authenticate(ctx, "/api/v1/local/oauth/token", "", map[string]string{
+		"grant_type":    "authorization_code",
+		"code":          code,
+		"redirect_uri":  redirectURI,
+		"client_id":     "noma-local",
+		"code_verifier": verifier,
+	})
+}
+
 // Authenticate preserves the public account fields while withholding cloud credentials.
 func (c *Client) Authenticate(ctx context.Context, path, authorization string, input any) (*Account, map[string]any, error) {
 	var body map[string]any

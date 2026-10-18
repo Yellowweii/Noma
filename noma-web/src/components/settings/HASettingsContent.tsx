@@ -59,7 +59,7 @@ function HAConnectionDetails() {
           <div className="flex gap-4"><dt className="w-20 shrink-0 text-noma-secondary">服务地址</dt><dd className="break-all text-noma-primary">{status?.ha_url || "尚未配置"}</dd></div>
           <div className="flex gap-4"><dt className="w-20 shrink-0 text-noma-secondary">授权设备</dt><dd className="break-all text-noma-primary">{status?.allowed_entities.length ? status.allowed_entities.join("、") : "暂无授权设备"}</dd></div>
         </dl>
-        {!status?.ha_configured && <p className="mt-5 rounded-lg bg-noma-soft p-4 text-sm leading-6 text-noma-secondary">请在本地部署配置中填写 HA 地址和访问令牌，并授权需要使用的设备，然后重启 Noma Local。</p>}
+        {!status?.ha_configured && <p className="mt-5 rounded-lg bg-noma-soft p-4 text-sm leading-6 text-noma-secondary">请在本地后端的 data/local.json 中填写 HA 地址、访问令牌和授权设备，然后重启 Noma Local。Docker 部署使用后端数据卷中的 /data/local.json。</p>}
         <p className="mt-4 text-xs leading-5 text-noma-tertiary">HA 访问令牌仅由本地后端保存，不会发送至云端。</p>
       </section>
       <section className="rounded-xl border border-noma-border bg-white p-6">

@@ -5,16 +5,10 @@ const { test } = require("node:test");
 const vm = require("node:vm");
 const ts = require("typescript");
 
-function setup({ path = "/memory/recent", search = "?history=true", refresh = false, clerk = false } = {}) {
+function setup({ path = "/memory/recent", search = "?history=true", refresh = false } = {}) {
   const requests = [];
   const redirects = [];
   const mocks = {
-    "./clerk": {
-      clerkPublishableKey: clerk ? "test-public-key" : "",
-      hasClerkLoginIntent: () => clerk,
-      getClerkSessionToken: async () => "test-clerk-token",
-      signOutClerk: async () => {},
-    },
     "./activeSessionStorage": { clearLoginSessionState: () => {} },
   };
   const context = {
@@ -22,7 +16,7 @@ function setup({ path = "/memory/recent", search = "?history=true", refresh = fa
     window: { location: { pathname: path, search, replace: value => redirects.push(value) } },
     fetch: async (url, options) => {
       requests.push({ url, options });
-      const ok = url.endsWith("/clerk") ? clerk : refresh;
+      const ok = refresh;
       return { ok, status: ok ? 200 : 401, json: async () => ({ access_token: "test-local-session-marker", user_id: "test-user" }) };
     },
   };
@@ -55,13 +49,5 @@ test("parallel bootstrap restores one authenticated session without entering gue
 test("failed login recovery on the login page does not redirect in a loop", async () => {
   const app = setup({ path: "/login/complete" });
   assert.equal(await app.auth.recoverAccessToken(), false);
-  assert.deepEqual(app.redirects, []);
-});
-
-test("explicit Clerk login can establish the session before login enforcement redirects", async () => {
-  const app = setup({ clerk: true });
-  assert.equal(await app.auth.bootstrapSession(), true);
-  assert.deepEqual(app.requests.map(request => request.url), ["/api/v1/auth/refresh", "/api/v1/auth/clerk"]);
-  assert.equal(app.requests[1].options.headers.Authorization, "Bearer test-clerk-token");
   assert.deepEqual(app.redirects, []);
 });

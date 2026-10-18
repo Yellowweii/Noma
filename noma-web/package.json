@@ -10,7 +10,6 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@clerk/clerk-js": "^6.33.0",
     "@gsap/react": "^2.1.2",
     "@heroicons/react": "^2.2.0",
     "clsx": "^2.1.1",

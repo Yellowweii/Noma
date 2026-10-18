@@ -3,8 +3,6 @@ package app
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -41,17 +39,13 @@ type session struct {
 	haAuthorized bool
 }
 type Server struct {
-	cfg            Config
-	ha             *ha.Client
-	cloud          *cloud.Client
-	mu             sync.Mutex
-	sessions       map[string]*session
-	unlockAttempts map[string]attempt
-	web            http.Handler
-}
-type attempt struct {
-	count int
-	until time.Time
+	cfg      Config
+	ha       *ha.Client
+	cloud    *cloud.Client
+	mu       sync.Mutex
+	sessions map[string]*session
+	pending  map[string]pendingOAuth
+	web      http.Handler
 }
 
 func New(cfg Config) (*Server, error) {
@@ -70,7 +64,7 @@ func New(cfg Config) (*Server, error) {
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
 		fail(w, 502, "Noma 前端尚未启动，请启动 noma-web 服务")
 	}
-	return &Server{cfg: cfg, ha: haClient, cloud: cloud.New(cfg.CloudURL), web: proxy, sessions: map[string]*session{}, unlockAttempts: map[string]attempt{}}, nil
+	return &Server{cfg: cfg, ha: haClient, cloud: cloud.New(cfg.CloudURL), web: proxy, sessions: map[string]*session{}, pending: map[string]pendingOAuth{}}, nil
 }
 
 func randomID() string {
@@ -122,6 +116,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(w, 403, "请使用 localhost 或服务器 IP 地址访问本地实例")
 		return
 	}
+	if r.URL.Path == "/login/cloud-callback" {
+		s.finishCloudLogin(w, r)
+		return
+	}
 	if strings.HasPrefix(r.URL.Path, "/api/") {
 		if r.Header.Get("Sec-Fetch-Site") == "cross-site" {
 			fail(w, 403, "不接受跨站请求")
@@ -167,7 +165,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func publicWebPath(path string) bool {
 	switch strings.TrimSuffix(path, "/") {
-	case "/login", "/login/", "/login/complete", "/login/sso-callback", "/privacy", "/terms", "/icon.svg", "/favicon.svg", "/noma-logo.svg", "/default-user-avatar.svg":
+	case "/login", "/login/", "/login/complete", "/privacy", "/terms", "/icon.svg", "/favicon.svg", "/noma-logo.svg", "/default-user-avatar.svg":
 		return true
 	}
 	return strings.HasPrefix(path, "/_next/static/") || path == "/_next/image" || path == "/_next/webpack-hmr" || strings.HasPrefix(path, "/images/") || strings.HasPrefix(path, "/videos/")
@@ -188,7 +186,7 @@ func (s *Server) getSession(r *http.Request) *session {
 	return nil
 }
 
-func (s *Server) unlock(w http.ResponseWriter, r *http.Request) {
+func (s *Server) authorizeHA(w http.ResponseWriter, r *http.Request) {
 	sess := s.getSession(r)
 	if sess == nil {
 		fail(w, 401, "请先登录 Noma 云端账号")
@@ -200,48 +198,15 @@ func (s *Server) unlock(w http.ResponseWriter, r *http.Request) {
 		fail(w, 401, "请先登录 Noma 云端账号")
 		return
 	}
-	var req struct {
-		Key string `json:"key"`
-	}
-	if !decode(w, r, &req) {
+	var input struct{}
+	if !decode(w, r, &input) {
 		return
 	}
-	s.mu.Lock()
-	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
-	now := time.Now()
-	for key, v := range s.unlockAttempts {
-		if now.After(v.until) {
-			delete(s.unlockAttempts, key)
-		}
-	}
-	a := s.unlockAttempts[ip]
-	if now.After(a.until) {
-		a = attempt{until: now.Add(time.Minute)}
-	}
-	a.count++
-	if len(s.unlockAttempts) >= 1024 {
-		s.mu.Unlock()
-		fail(w, 429, "本地登录请求过多")
-		return
-	}
-	s.unlockAttempts[ip] = a
-	if a.count > 10 {
-		s.mu.Unlock()
-		fail(w, 429, "解锁尝试过多，请一分钟后重试")
-		return
-	}
-	left, right := sha256.Sum256([]byte(req.Key)), sha256.Sum256([]byte(s.cfg.AccessKey))
-	if subtle.ConstantTimeCompare(left[:], right[:]) != 1 {
-		s.mu.Unlock()
-		fail(w, 401, "本地访问密钥不正确")
-		return
-	}
-	s.mu.Unlock()
 	sess.haAuthorized = true
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }
 
-// Cloud login creates a browser session; the household key only adds HA access.
+// Cloud login creates a browser session; device access is enabled separately by the signed-in browser.
 func (s *Server) saveSession(w http.ResponseWriter, sess *session) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -269,8 +234,12 @@ func (s *Server) api(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]string{"status": "ok", "service": "noma-local"})
 		return
 	}
-	if path == "/api/local/unlock" && r.Method == "POST" {
-		s.unlock(w, r)
+	if path == "/api/local/auth/google" && r.Method == "GET" {
+		s.beginCloudLogin(w, r)
+		return
+	}
+	if path == "/api/local/ha/authorize" && r.Method == "POST" {
+		s.authorizeHA(w, r)
 		return
 	}
 	sess := s.getSession(r)

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"log"
 	"net"
 	"net/http"
@@ -17,7 +18,7 @@ func main() {
 	if len(os.Args) == 2 && os.Args[1] == "healthcheck" {
 		_, port, err := net.SplitHostPort(os.Getenv("NOMA_LOCAL_ADDR"))
 		if err != nil {
-			port = "3000"
+			_, port, _ = net.SplitHostPort(app.DefaultAddr)
 		}
 		client := &http.Client{Timeout: 2 * time.Second}
 		response, err := client.Get("http://" + net.JoinHostPort("127.0.0.1", port) + "/api/local/health")
@@ -30,7 +31,9 @@ func main() {
 		}
 		return
 	}
-	cfg, err := app.LoadConfig()
+	configPath := flag.String("config", "data/local.json", "local backend configuration file (optional)")
+	flag.Parse()
+	cfg, err := app.LoadConfig(*configPath)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -38,8 +41,9 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	// The gateway proxies the Next.js dev server, including its long-lived refresh socket.
 	srv := &http.Server{Addr: cfg.Addr, Handler: handler, ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout: 10 * time.Second, WriteTimeout: 3 * time.Minute, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10}
+		ReadTimeout: 0, WriteTimeout: 0, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	go func() {

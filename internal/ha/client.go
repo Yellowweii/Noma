@@ -28,7 +28,7 @@ func New(base, token string, entities []string) (*Client, error) {
 		http: &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
 	for _, id := range entities {
 		if !EntityPattern.MatchString(id) {
-			return nil, fmt.Errorf("invalid entity in NOMA_HA_ALLOWED_ENTITIES")
+			return nil, fmt.Errorf("HA 实体白名单格式无效")
 		}
 		c.allowed[id] = true
 	}
@@ -47,7 +47,7 @@ func (c *Client) Allowed() []string {
 
 func (c *Client) request(ctx context.Context, method, path string, input any, output any) error {
 	if !c.Configured() {
-		return fmt.Errorf("请先在本地环境变量中配置 HA 地址及 Token")
+		return fmt.Errorf("请先在本地后端配置文件中填写 HA 地址及 Token")
 	}
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("请求已取消，未发起新的 HA 操作")

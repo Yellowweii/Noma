@@ -1,29 +1,52 @@
 package app
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"strings"
 )
 
 type Config struct {
-	Addr, AccessKey, CloudURL, HAURL, HAToken, WebURL string
-	AllowedEntities                                   []string
-	SecureCookie                                      bool
+	Addr            string   `json:"listen"`
+	CloudURL        string   `json:"cloud_url"`
+	HAURL           string   `json:"ha_url"`
+	HAToken         string   `json:"ha_token"`
+	WebURL          string   `json:"web_url"`
+	AllowedEntities []string `json:"allowed_entities"`
+	SecureCookie    bool     `json:"secure_cookie"`
 }
 
-func LoadConfig() (Config, error) {
-	c := Config{Addr: env("NOMA_LOCAL_ADDR", "127.0.0.1:3000"),
-		AccessKey: os.Getenv("NOMA_LOCAL_ACCESS_KEY"), CloudURL: env("NOMA_CLOUD_URL", "https://noma-ai.cloud"),
-		HAURL: os.Getenv("NOMA_HA_URL"), HAToken: os.Getenv("NOMA_HA_TOKEN"),
-		WebURL:       env("NOMA_WEB_URL", "http://127.0.0.1:3001"),
-		SecureCookie: os.Getenv("NOMA_LOCAL_SECURE_COOKIE") == "true"}
-	for _, id := range strings.Split(os.Getenv("NOMA_HA_ALLOWED_ENTITIES"), ",") {
-		if id = strings.TrimSpace(id); id != "" {
-			c.AllowedEntities = append(c.AllowedEntities, id)
-		}
+const DefaultAddr = "127.0.0.1:3100"
+
+// Missing configuration is valid: account login and chat need no household secrets.
+// HA credentials are read only by this backend, never from a browser form.
+func LoadConfig(paths ...string) (Config, error) {
+	c := Config{Addr: DefaultAddr, CloudURL: "https://noma-ai.cloud", WebURL: "http://127.0.0.1:3001"}
+	path := "data/local.json"
+	if len(paths) > 0 {
+		path = paths[0]
 	}
+	f, err := os.Open(path)
+	if err == nil {
+		defer f.Close()
+		info, statErr := f.Stat()
+		if statErr != nil || info.Size() > 64<<10 {
+			return Config{}, fmt.Errorf("本地配置文件无法读取或超出大小限制")
+		}
+		decoder := json.NewDecoder(io.LimitReader(f, 64<<10))
+		decoder.DisallowUnknownFields()
+		if decoder.Decode(&c) != nil || decoder.Decode(new(any)) != io.EOF {
+			return Config{}, fmt.Errorf("本地配置文件格式或字段无效")
+		}
+	} else if !os.IsNotExist(err) {
+		return Config{}, fmt.Errorf("无法读取本地配置文件")
+	}
+	// Container-to-container routing is supplied by Compose, not household .env.
+	c.Addr = env("NOMA_LOCAL_ADDR", c.Addr)
+	c.WebURL = env("NOMA_WEB_URL", c.WebURL)
 	return c, c.validate()
 }
 
@@ -33,15 +56,12 @@ func (c Config) validate() error {
 			return fmt.Errorf("NOMA_WEB_URL: %w", err)
 		}
 	}
-	if len(c.AccessKey) < 24 || strings.HasPrefix(c.AccessKey, "replace-") {
-		return fmt.Errorf("NOMA_LOCAL_ACCESS_KEY must be a random key of at least 24 characters")
-	}
 	if err := validateURL(c.CloudURL, false); err != nil {
-		return fmt.Errorf("NOMA_CLOUD_URL: %w", err)
+		return fmt.Errorf("cloud_url: %w", err)
 	}
 	if c.HAURL != "" {
 		if err := validateURL(c.HAURL, true); err != nil {
-			return fmt.Errorf("NOMA_HA_URL: %w", err)
+			return fmt.Errorf("ha_url: %w", err)
 		}
 	}
 	return nil

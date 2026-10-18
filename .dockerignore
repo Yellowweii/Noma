@@ -1,6 +1,7 @@
 .git
 .env
 .env.*
+data
 shenxun*.env
 bin
 dist
