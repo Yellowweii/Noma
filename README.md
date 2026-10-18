@@ -56,11 +56,11 @@ PowerShell：`Copy-Item .env.example .env`。示例占位密钥会被拒绝。�
 | `NOMA_LOCAL_BIND` / `NOMA_LOCAL_PORT` | 默认 `127.0.0.1:3000`；手机访问可将 bind 设为 `0.0.0.0` 并使用服务器局域网 IP |
 | `NOMA_LOCAL_SECURE_COOKIE` | 本地 HTTPS 反向代理时设为 true，代理需保留 Host；初版 Host 只接受 IP / localhost |
 | `NOMA_WEB_URL` | 原生开发默认 `http://127.0.0.1:3001`；Compose 自动配置内部服务名 |
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | 可选 Clerk 公开 Key，作为前端 build arg；需另外配置 Clerk / 云端允许的本地来源和回调 |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | 可选覆盖 Clerk 公开 Key，默认内置 Noma 官方值，无需配置；覆盖值作为前端 build arg 注入 |
 
 修改运行配置后 `docker compose up -d --force-recreate`；修改 Clerk Key 后需重新构建前端。邮箱 / 手机登录复用原云端验证码接口。
 
-Google 登录按钮仅在 `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` 非空时显示。Docker 部署在根目录 `.env` 填入对应 Clerk 实例的 Publishable Key 后，执行 `docker compose up -d --build`；原生开发在启动 `noma-web` 前设置该环境变量，或写入 `noma-web/.env.local`，然后重启前端。只需要公开 Key，不要把 Clerk Secret Key 放入前端。实际 Google 登录还需要配置 Clerk / 云端允许的本地来源及 `/login/sso-callback`、`/login/complete` 回调。
+Google 登录默认使用内置的 Noma 官方 Clerk Publishable Key，无需设置环境变量，未设置或留空也会显示入口。它是可公开的浏览器标识，不是 Secret Key。需要更换 Clerk 实例时，Docker 部署可在根目录 `.env` 设置 `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` 后执行 `docker compose up -d --build`；原生开发可通过 shell 或 `noma-web/.env.local` 覆盖并重启前端。实际 Google 登录仍需 Clerk / 云端允许本地来源及 `/login/sso-callback`、`/login/complete` 回调。HA Token 和每个家庭的本地访问密钥仍由部署者单独配置，不使用共享默认凭证。
 
 局域网 HTTP 会明文传输凭证和对话；手机录音等浏览器能力需要安全上下文，正式家庭部署建议本地 HTTPS。服务需持续运行，初版不提供离家远程访问部署方案。
 

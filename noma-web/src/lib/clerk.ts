@@ -1,6 +1,8 @@
 import type { Clerk } from "@clerk/clerk-js";
 
-export const clerkPublishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || "";
+// Public browser identifier for Noma's Clerk instance, not a secret credential.
+const defaultClerkPublishableKey = "pk_live_Y2xlcmsubm9tYS1haS5jbG91ZCQ";
+export const clerkPublishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY?.trim() || defaultClerkPublishableKey;
 let clerkPromise: Promise<Clerk> | null = null;
 const loginMarker = "noma_clerk_login";
 
