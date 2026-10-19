@@ -2,19 +2,20 @@
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { LoginEnteringScreen } from "@/components/login/LoginEnteringScreen";
 import { ResizableDashboardShell } from "@/components/layout/ResizableDashboardShell";
 import { HAConnectionMonitor } from "@/components/layout/HAConnectionMonitor";
 import { ChatSessionProvider } from "@/contexts/ChatSessionContext";
 import { UserProvider } from "@/contexts/UserContext";
 import { bootstrapSession, getAccessToken } from "@/lib/api";
 
-export function DashboardContent({ children }: {
+export function DashboardContent({ children, sessionReady = false }: {
   children: React.ReactNode;
+  sessionReady?: boolean;
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [authenticated, setAuthenticated] = useState(false);
+  const [authenticated, setAuthenticated] = useState(sessionReady);
 
   useEffect(() => {
     let cancelled = false;
@@ -30,7 +31,8 @@ export function DashboardContent({ children }: {
     return () => { cancelled = true; };
   }, [pathname, router]);
 
-  if (!authenticated) return <div className="flex h-full items-center justify-center bg-white"><Loader2 aria-label="正在验证登录状态" className="size-5 animate-spin text-noma-brand" /></div>;
+  // The gateway already validated the HttpOnly session before rendering the protected layout.
+  if (!authenticated && !getAccessToken()) return <LoginEnteringScreen activeStep={2} />;
 
   return (
     <UserProvider>

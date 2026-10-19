@@ -61,13 +61,35 @@ func TestCloudLoginExchangesAuthorizationCodeWithoutClerkToken(t *testing.T) {
 
 	code := "local-auth-code-000001"
 	callback := f.raw(t, "GET", "/login/cloud-callback?code="+code+"&state="+query.Get("state"), http.Header{"Sec-Fetch-Site": {"cross-site"}})
-	if callback.StatusCode != http.StatusSeeOther || callback.Header.Get("Location") != "/login/complete?method=google&next=%2Fmemory%2Frecent" {
+	if callback.StatusCode != http.StatusSeeOther || callback.Header.Get("Location") != "/memory/recent" {
 		body, _ := io.ReadAll(callback.Body)
 		t.Fatalf("callback: %d %s %s", callback.StatusCode, callback.Header.Get("Location"), body)
 	}
 	joined := strings.Join(callback.Header.Values("Set-Cookie"), ";")
 	if strings.Contains(joined, "test-cloud-access") || strings.Contains(joined, "test-refresh-token") || !strings.Contains(joined, cookieName+"=") {
 		t.Fatal("cloud credentials reached the browser")
+	}
+	var sessionCookie, intentCookie, freshCookie *http.Cookie
+	for _, c := range callback.Cookies() {
+		if c.Name == cookieName {
+			sessionCookie = c
+		}
+		if c.Name == "noma.freshLogin" {
+			freshCookie = c
+		}
+		if c.Name == "noma.newChatIntent" {
+			intentCookie = c
+		}
+	}
+	// Lax sends the session on the top-level cross-site OAuth redirect chain.
+	if sessionCookie == nil || !sessionCookie.HttpOnly || sessionCookie.SameSite != http.SameSiteLaxMode {
+		t.Fatal("direct OAuth landing must carry the local HttpOnly session")
+	}
+	if intentCookie == nil || intentCookie.Value != "1" || intentCookie.HttpOnly {
+		t.Fatal("direct OAuth landing did not preserve the fresh-chat intent")
+	}
+	if freshCookie == nil || freshCookie.Value != "1" || freshCookie.HttpOnly {
+		t.Fatal("direct OAuth landing did not mark the one-time conversation reset")
 	}
 	if f.oauthUses.Load() != 1 {
 		t.Fatalf("token exchange count: %d", f.oauthUses.Load())
@@ -102,7 +124,7 @@ func TestCloudLoginRejectsCrossSiteStartMismatchedStateAndOpenRedirect(t *testin
 		t.Fatal("mismatched state reached the token endpoint")
 	}
 	callback := f.raw(t, "GET", "/login/cloud-callback?code=local-auth-code-000001&state="+state, nil)
-	if callback.Header.Get("Location") != "/login/complete?method=google&next=%2Fagent" {
+	if callback.Header.Get("Location") != "/agent" {
 		t.Fatalf("open redirect: %s", callback.Header.Get("Location"))
 	}
 	deniedFixture := newFixture(t, fixtureOptions{})

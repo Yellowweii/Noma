@@ -62,3 +62,11 @@ export function clearLoginSessionState() {
   clearStoredActiveSessionId();
   clearNewChatIntent();
 }
+
+/** Consume the backend's one-time Google landing hint before restoring a conversation. */
+export function consumeFreshLoginLanding(): boolean {
+  if (typeof document === "undefined" || !document.cookie.split(";").some((part) => part.trim() === "noma.freshLogin=1")) return false;
+  prepareFreshLoginLanding();
+  document.cookie = "noma.freshLogin=; path=/; max-age=0; SameSite=Lax";
+  return true;
+}

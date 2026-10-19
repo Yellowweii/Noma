@@ -1,4 +1,4 @@
-import { readStoredActiveSessionId } from "@/lib/activeSessionStorage";
+import { consumeFreshLoginLanding, readStoredActiveSessionId } from "@/lib/activeSessionStorage";
 import { parseLegacyAgentSessionId } from "@/lib/chatRoutes";
 import {
   createPendingSessionId,
@@ -20,6 +20,7 @@ export function createBootstrapPendingSessionState(): InitialChatSessionState {
 /** 仅在客户端 useLayoutEffect 中调用，恢复上次选中的 session */
 export function readRestorableSessionId(): string | null {
   if (typeof window === "undefined") return null;
+  consumeFreshLoginLanding();
 
   const legacySessionId = parseLegacyAgentSessionId(window.location.pathname);
   if (legacySessionId) return legacySessionId;

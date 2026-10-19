@@ -127,7 +127,7 @@ func (s *Server) frontendAuth(ctx context.Context, w http.ResponseWriter, r *htt
 			cloudFailure(w, err)
 			return true
 		}
-		if sess.expires.IsZero() && !s.saveSession(w, sess) {
+		if sess.expires.IsZero() && !s.saveSession(w, sess, http.SameSiteStrictMode) {
 			s.cloud.Logout(ctx, account)
 			return true
 		}

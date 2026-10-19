@@ -85,11 +85,17 @@ func (s *Server) finishCloudLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sess := &session{turns: map[string]cachedTurn{}, account: account, userID: accountUserID(body)}
-	if !s.saveSession(w, sess) {
+	if !s.saveSession(w, sess, http.SameSiteLaxMode) {
 		s.cloud.Logout(ctx, account)
 		return
 	}
-	http.Redirect(w, r, "/login/complete?method=google&next="+url.QueryEscape(pending.next), http.StatusSeeOther)
+	// The cloud synchronization screen stays visible during this exchange. Enter the
+	// protected destination directly instead of starting a second synchronization page.
+	http.SetCookie(w, &http.Cookie{Name: "noma.newChatIntent", Value: "1", Path: "/", MaxAge: 86400,
+		Secure: s.cfg.SecureCookie, SameSite: http.SameSiteLaxMode})
+	http.SetCookie(w, &http.Cookie{Name: "noma.freshLogin", Value: "1", Path: "/", MaxAge: 600,
+		Secure: s.cfg.SecureCookie, SameSite: http.SameSiteLaxMode})
+	http.Redirect(w, r, pending.next, http.StatusSeeOther)
 }
 
 func (s *Server) redirectURI(r *http.Request) string {

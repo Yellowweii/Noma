@@ -10,7 +10,7 @@
 - `POST /api/v1/auth/otp/verify`，body `{ "email": "...", "code": "123456" }`。
 - 登录返回 `{ "access_token": "...", "expires_in": 900 }`，通过 `Set-Cookie` 返回 `noma_refresh_token`。
 - `POST /api/v1/auth/refresh` 使用本地后端持有的 refresh Cookie；`POST /api/v1/auth/logout` 撤销该 Cookie。
-- 后续 Local API 使用 `Authorization: Bearer <Noma access token>`。浏览器只收到本地 HttpOnly / SameSite=Strict 会话 Cookie，不收到云端 token。
+- 后续 Local API 使用 `Authorization: Bearer <Noma access token>`。浏览器只收到本地 HttpOnly 会话 Cookie（验证码登录为 SameSite=Strict，Google 顶层回跳为 SameSite=Lax），不收到云端 token。
 - 邮箱和手机验证码仍由本地后端代发。Google 登录不在本地初始化 Clerk，也不传递 Clerk Session Token。浏览器跳到固定云端来源完成登录，本地后端再用一次性授权码兑换 Noma 访问凭证。云端 Token 留在后端。
 
 ### 官网授权登录
@@ -23,7 +23,7 @@
 
 云端页面在 `https://noma-ai.cloud` 上完成 Clerk 登录，并让用户选择账号。授权码一次性、最长两分钟，绑定该用户、`redirect_uri`、`code_challenge` 和 `client_id=noma-local`。回跳只携带 `code` 与 `state`，或 `error` 与 `state`。不回传 Clerk Session Token、访问令牌或云端 Cookie。`redirect_uri` 必须是 loopback、localhost 或私网地址，路径恰好为 `/login/cloud-callback`，不能带用户信息、查询或片段。
 
-官网授权页复用既有 Google 账号选择，使用专用 `/local/callback` 回调返回 `/local/authorize`，不经过官网 `/login/complete`、游客记录导入或完整登录完成进度页。授权前用刚选中的 Clerk 账号建立云端身份，再仅在官网使用云端 access token 调用 `POST /api/v1/local/oauth/authorize`；请求 JSON 包含上述六个授权参数。接口校验登录身份、固定客户端、回调地址、state 和 S256 challenge，返回 `{ "redirect_url": "{本地}/login/cloud-callback?code=...&state=..." }`。官网只展示简短中转状态，完整登录完成进度在返回 Local 后展示一次。该接口不由本地网关代理，也不把云端登录凭证传给本地浏览器。授权码摘要作为 Redis key，授权记录两分钟过期；兑换时原子消费，禁止并发重复兑换。
+官网授权页复用既有 Google 账号选择，使用专用 `/local/callback` 回调原地接续本地授权，不经过官网 `/login/complete` 或游客记录导入。Google 返回后的回调确认、账号身份同步和授权码签发统一显示现有登录进度页的“正在同步你的信息”阶段，官网回调原地完成账号身份同步与授权码签发，不再次打开官网授权页。仅在授权成功且本地回调地址校验通过后，同一同步页进入 100% 完成态，显示“账号信息同步完成”；完成态绘制后停留约一秒（含进度条动画），再回到 Local。失败不显示完成态。Local 后端完成授权码兑换、创建 HttpOnly 会话后直接跳转原始目标（默认 `/agent`），不再经过本地 `/login/complete` 或重复展示同步进度。OAuth 会话 Cookie 使用 SameSite=Lax，以便顶层跨站回跳链能携带会话；写 API 仍强制同源 Origin。受保护页面由网关验证会话后直接渲染应用，在后台恢复浏览器的会话标记；Google 登录仍设置既有新对话意图，并用短期 `noma.freshLogin` 提示在客户端首次恢复对话前清理旧会话选择，消费后删除；该提示不参与鉴权。打开 Google 前不显示登录完成进度，不使用弹窗，也不展示独立的品牌中转等待页。授权前用刚选中的 Clerk 账号建立云端身份，再仅在官网使用云端 access token 调用 `POST /api/v1/local/oauth/authorize`；请求 JSON 包含上述六个授权参数。接口校验登录身份、固定客户端、回调地址、state 和 S256 challenge，返回 `{ "redirect_url": "{本地}/login/cloud-callback?code=...&state=..." }`。失败时保留错误和重试入口。该接口不由本地网关代理，也不把云端登录凭证传给本地浏览器。授权码摘要作为 Redis key，授权记录两分钟过期；兑换时原子消费，禁止并发重复兑换。
 
 本地校验 Cookie 中的 `state` 后，由后端调用：
 

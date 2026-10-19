@@ -207,7 +207,7 @@ func (s *Server) authorizeHA(w http.ResponseWriter, r *http.Request) {
 }
 
 // Cloud login creates a browser session; device access is enabled separately by the signed-in browser.
-func (s *Server) saveSession(w http.ResponseWriter, sess *session) bool {
+func (s *Server) saveSession(w http.ResponseWriter, sess *session, sameSite http.SameSite) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := time.Now()
@@ -224,7 +224,7 @@ func (s *Server) saveSession(w http.ResponseWriter, sess *session) bool {
 	sess.expires = now.Add(sessionLifetime)
 	s.sessions[id] = sess
 	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: id, Path: "/", HttpOnly: true, Secure: s.cfg.SecureCookie,
-		SameSite: http.SameSiteStrictMode, MaxAge: int(sessionLifetime.Seconds())})
+		SameSite: sameSite, MaxAge: int(sessionLifetime.Seconds())})
 	return true
 }
 

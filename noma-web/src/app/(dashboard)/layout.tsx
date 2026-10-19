@@ -5,5 +5,5 @@ import { DashboardContent } from "./DashboardContent";
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const cookieStore = await cookies();
   if (!cookieStore.get("noma_local_session")?.value) redirect("/login");
-  return <DashboardContent>{children}</DashboardContent>;
+  return <DashboardContent sessionReady>{children}</DashboardContent>;
 }

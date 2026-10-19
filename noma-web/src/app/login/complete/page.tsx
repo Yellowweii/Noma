@@ -7,7 +7,7 @@ import {
   LoginEnteringScreen,
   type LoginEnteringStep,
 } from "@/components/login/LoginEnteringScreen";
-import { api } from "@/lib/api";
+import { api, bootstrapSession } from "@/lib/api";
 import { prepareFreshLoginLanding } from "@/lib/activeSessionStorage";
 import { safeNextPath } from "@/lib/safeNext";
 
@@ -40,6 +40,7 @@ function CompleteLoginContent() {
     setError("");
     setActiveStep(2);
     try {
+      if (!await bootstrapSession()) throw new Error("登录已过期，请返回登录页重新登录");
       await api.getMe();
       if (isCloud) prepareFreshLoginLanding();
       setActiveStep(4);
