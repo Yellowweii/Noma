@@ -328,7 +328,7 @@ export function AgentSidebar({
           style={{ width: expandedWidth }}
         >
           <Link
-            href="/"
+            href="/agent"
             onClick={onNavigate}
             className={cn(
               itemClass,

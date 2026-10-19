@@ -70,8 +70,6 @@ export interface User {
   created_at: string;
 }
 
-export type LandingUser = Pick<User, "name" | "avatar_url">;
-
 export interface ChatSession {
   session_id: string;
   user_id: string;

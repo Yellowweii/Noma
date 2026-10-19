@@ -23,7 +23,7 @@
 
 云端页面在 `https://noma-ai.cloud` 上完成 Clerk 登录，并让用户选择账号。授权码一次性、最长两分钟，绑定该用户、`redirect_uri`、`code_challenge` 和 `client_id=noma-local`。回跳只携带 `code` 与 `state`，或 `error` 与 `state`。不回传 Clerk Session Token、访问令牌或云端 Cookie。`redirect_uri` 必须是 loopback、localhost 或私网地址，路径恰好为 `/login/cloud-callback`，不能带用户信息、查询或片段。
 
-官网授权页复用既有 Google 账号选择与登录回调，完成后仅在官网使用云端 access token 调用 `POST /api/v1/local/oauth/authorize`；请求 JSON 包含上述六个授权参数。接口校验登录身份、固定客户端、回调地址、state 和 S256 challenge，返回 `{ "redirect_url": "{本地}/login/cloud-callback?code=...&state=..." }`。该接口不由本地网关代理，也不把云端登录凭证传给本地浏览器。授权码摘要作为 Redis key，授权记录两分钟过期；兑换时原子消费，禁止并发重复兑换。
+官网授权页复用既有 Google 账号选择，使用专用 `/local/callback` 回调返回 `/local/authorize`，不经过官网 `/login/complete`、游客记录导入或完整登录完成进度页。授权前用刚选中的 Clerk 账号建立云端身份，再仅在官网使用云端 access token 调用 `POST /api/v1/local/oauth/authorize`；请求 JSON 包含上述六个授权参数。接口校验登录身份、固定客户端、回调地址、state 和 S256 challenge，返回 `{ "redirect_url": "{本地}/login/cloud-callback?code=...&state=..." }`。官网只展示简短中转状态，完整登录完成进度在返回 Local 后展示一次。该接口不由本地网关代理，也不把云端登录凭证传给本地浏览器。授权码摘要作为 Redis key，授权记录两分钟过期；兑换时原子消费，禁止并发重复兑换。
 
 本地校验 Cookie 中的 `state` 后，由后端调用：
 
