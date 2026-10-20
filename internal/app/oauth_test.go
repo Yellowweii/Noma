@@ -95,13 +95,22 @@ func TestCloudLoginExchangesAuthorizationCodeWithoutClerkToken(t *testing.T) {
 		t.Fatalf("token exchange count: %d", f.oauthUses.Load())
 	}
 	status, body, _ := f.request(t, "GET", "/api/v1/me", nil)
-	if status != 200 || !strings.Contains(body, "test-user") {
+	if status != 200 || !strings.Contains(body, "test-user") || !strings.Contains(body, "Google Test User") || !strings.Contains(body, "https://example.invalid/test-avatar.png") {
 		t.Fatalf("session after cloud login: %d %s", status, body)
+	}
+	status, body, _ = f.request(t, "GET", "/api/v1/auth/session", nil)
+	if status != 200 || !strings.Contains(body, "Google Test User") || !strings.Contains(body, "https://example.invalid/test-avatar.png") {
+		t.Fatal("local session did not preserve cloud profile fields")
 	}
 
 	replay := f.raw(t, "GET", "/login/cloud-callback?code="+code+"&state="+query.Get("state"), http.Header{"Sec-Fetch-Site": {"cross-site"}})
 	if replay.StatusCode != http.StatusSeeOther || !strings.Contains(replay.Header.Get("Location"), "error=state") || f.oauthUses.Load() != 1 {
 		t.Fatal("authorization code was reusable")
+	}
+	restartGateway(t, f)
+	status, body, _ = f.request(t, "POST", "/api/v1/auth/refresh", map[string]any{})
+	if status != 200 || !strings.Contains(body, localAccessMarker) || f.oauthUses.Load() != 1 {
+		t.Fatal("Google login did not survive gateway restart without another authorization code exchange")
 	}
 }
 

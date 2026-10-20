@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"noma.local/public/internal/protocol"
@@ -18,15 +19,23 @@ import (
 var EntityPattern = regexp.MustCompile(`^[a-z_]+\.[a-z0-9_]+$`)
 
 type Client struct {
-	base, token string
-	allowed     map[string]bool
-	http        *http.Client
+	base, token       string
+	allowed           map[string]bool
+	allowAll          bool
+	http              *http.Client
+	registryMu        sync.Mutex
+	registry          registrySnapshot
+	registryNextCheck time.Time
 }
 
 func New(base, token string, entities []string) (*Client, error) {
 	c := &Client{base: strings.TrimRight(base, "/"), token: token, allowed: map[string]bool{},
 		http: &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
 	for _, id := range entities {
+		if id == "*" && len(entities) == 1 {
+			c.allowAll = true
+			continue
+		}
 		if !EntityPattern.MatchString(id) {
 			return nil, fmt.Errorf("HA 实体白名单格式无效")
 		}
@@ -37,6 +46,9 @@ func New(base, token string, entities []string) (*Client, error) {
 
 func (c *Client) Configured() bool { return c.base != "" && c.token != "" }
 func (c *Client) Allowed() []string {
+	if c.allowAll {
+		return []string{"*"}
+	}
 	ids := []string{}
 	for id := range c.allowed {
 		ids = append(ids, id)
@@ -47,7 +59,7 @@ func (c *Client) Allowed() []string {
 
 func (c *Client) request(ctx context.Context, method, path string, input any, output any) error {
 	if !c.Configured() {
-		return fmt.Errorf("请先在本地后端配置文件中填写 HA 地址及 Token")
+		return fmt.Errorf("请先在 Home Assistant 设置中填写访问令牌并连接")
 	}
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("请求已取消，未发起新的 HA 操作")
@@ -93,9 +105,14 @@ type State struct {
 	EntityID   string         `json:"entity_id"`
 	State      string         `json:"state"`
 	Attributes map[string]any `json:"attributes"`
+	AreaID     string         `json:"-"`
+	Room       string         `json:"-"`
+	DeviceID   string         `json:"-"`
+	homeHidden bool
 }
 
 func sanitize(state State) State {
+	state.homeHidden = state.homeHidden || homeMetadataHidden(state.Attributes)
 	attrs := map[string]any{}
 	for _, key := range []string{"friendly_name", "unit_of_measurement", "device_class", "icon", "supported_features", "supported_color_modes", "brightness", "rgb_color", "rgbw_color", "rgbww_color", "color_mode", "color_temp_kelvin", "min_color_temp_kelvin", "max_color_temp_kelvin", "temperature", "current_temperature", "hvac_action"} {
 		if value, ok := state.Attributes[key]; ok {
@@ -108,6 +125,21 @@ func sanitize(state State) State {
 
 func (c *Client) States(ctx context.Context) ([]State, error) {
 	states := []State{}
+	if c.allowAll {
+		if err := c.request(ctx, "GET", "/api/states", nil, &states); err != nil {
+			return nil, err
+		}
+		if states == nil {
+			return nil, fmt.Errorf("HA 未返回有效的设备列表")
+		}
+		for i, state := range states {
+			if !EntityPattern.MatchString(state.EntityID) {
+				return nil, fmt.Errorf("HA 返回了无效的设备标识")
+			}
+			states[i] = sanitize(state)
+		}
+		return states, nil
+	}
 	// Fetch only explicitly authorized entities. Do not read the entire household.
 	for _, id := range c.Allowed() {
 		var state State
@@ -131,7 +163,7 @@ type Control struct {
 }
 
 func (c *Client) Control(ctx context.Context, args Control) (any, error) {
-	if !EntityPattern.MatchString(args.EntityID) || !c.allowed[args.EntityID] {
+	if !EntityPattern.MatchString(args.EntityID) || (!c.allowAll && !c.allowed[args.EntityID]) {
 		return nil, fmt.Errorf("设备未在本地实体白名单中授权")
 	}
 	domain := strings.SplitN(args.EntityID, ".", 2)[0]
@@ -144,6 +176,16 @@ func (c *Client) Control(ctx context.Context, args Control) (any, error) {
 			return nil, fmt.Errorf("参数未授权或超出允许的灯光参数范围")
 		}
 		payload[key] = value
+	}
+	// All-entity access covers real HA entities, never arbitrary service targets.
+	if c.allowAll {
+		var state State
+		if err := c.request(ctx, "GET", "/api/states/"+args.EntityID, nil, &state); err != nil {
+			return nil, err
+		}
+		if state.EntityID != args.EntityID {
+			return nil, fmt.Errorf("HA 返回了不匹配的设备标识")
+		}
 	}
 	if err := c.request(ctx, "POST", "/api/services/"+domain+"/"+args.Action, payload, nil); err != nil {
 		return nil, err

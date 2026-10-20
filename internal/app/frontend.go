@@ -127,20 +127,8 @@ func (s *Server) frontendAuth(ctx context.Context, w http.ResponseWriter, r *htt
 			cloudFailure(w, err)
 			return true
 		}
-		if sess.expires.IsZero() && !s.saveSession(w, sess, http.SameSiteStrictMode) {
-			s.cloud.Logout(ctx, account)
+		if !s.replaceLogin(ctx, w, sess, account, accountUserID(body), http.SameSiteStrictMode) {
 			return true
-		}
-		if sess.account != nil {
-			s.cloud.Logout(ctx, sess.account)
-		}
-		sess.account, sess.turns = account, map[string]cachedTurn{}
-		sess.haAuthorized = false
-		sess.userID, _ = body["user_id"].(string)
-		if sess.userID == "" {
-			if user, ok := body["user"].(map[string]any); ok {
-				sess.userID, _ = user["user_id"].(string)
-			}
 		}
 		body["access_token"] = localAccessMarker
 		writeJSON(w, 200, body)
@@ -150,7 +138,7 @@ func (s *Server) frontendAuth(ctx context.Context, w http.ResponseWriter, r *htt
 			return true
 		}
 		if _, err := s.cloud.AccessToken(ctx, sess.account); err != nil {
-			cloudFailure(w, err)
+			cloudFailure(w, s.revokeRejectedSession(w, sess, err))
 			return true
 		}
 		writeJSON(w, 200, map[string]any{"access_token": localAccessMarker, "user_id": sess.userID, "expires_in": int(time.Until(sess.expires).Seconds())})
@@ -166,12 +154,17 @@ func (s *Server) frontendAuth(ctx context.Context, w http.ResponseWriter, r *htt
 		}
 		writeJSON(w, 200, user)
 	case path == "/auth/logout" && r.Method == "POST":
+		if err := s.deleteSession(sess); err != nil {
+			fail(w, 500, "无法撤销本地登录状态，请检查后端数据目录权限")
+			return true
+		}
 		if sess.account != nil {
 			s.cloud.Logout(ctx, sess.account)
 		}
 		sess.account, sess.userID, sess.turns = nil, "", map[string]cachedTurn{}
 		// Signing out also revokes this browser's device authorization.
 		sess.haAuthorized = false
+		s.clearSessionCookie(w)
 		writeJSON(w, 200, map[string]bool{"ok": true})
 	default:
 		fail(w, 404, "认证接口不存在")
@@ -315,7 +308,7 @@ func (s *Server) frontendHA(ctx context.Context, w http.ResponseWriter, r *http.
 			diagnostic = err.Error()
 		}
 		writeJSON(w, 200, map[string]any{"available": true, "prepared": s.ha.Configured(), "authorized": s.ha.Configured(), "connection_id": "noma-local-instance", "local_url": s.cfg.HAURL,
-			"ha_reachable": err == nil, "can_authorize": false, "home_name": "我的家", "diagnostic": diagnostic})
+			"ha_reachable": err == nil, "can_authorize": false, "home_name": s.homeName(), "last_connected_at": s.cfg.HAConnectedAt, "diagnostic": diagnostic})
 		return
 	}
 	if path == "/home/status" && r.Method == "GET" {
@@ -329,7 +322,7 @@ func (s *Server) frontendHA(ctx context.Context, w http.ResponseWriter, r *http.
 			writeJSON(w, 200, status)
 			return
 		}
-		states, err := s.ha.States(ctx)
+		states, err := s.ha.DashboardStates(ctx)
 		if err != nil {
 			status["message"] = err.Error()
 			writeJSON(w, 200, status)
@@ -338,20 +331,27 @@ func (s *Server) frontendHA(ctx context.Context, w http.ResponseWriter, r *http.
 		status["ha_reachable"], status["updated_at"] = true, time.Now().UTC().Format(time.RFC3339)
 		summary := []map[string]any{}
 		for _, state := range states {
-			summary = append(summary, map[string]any{"name": stateName(state), "domain": strings.SplitN(state.EntityID, ".", 2)[0], "state": state.State})
+			if !state.HomeVisible() {
+				continue
+			}
+			summary = append(summary, map[string]any{"name": stateName(state), "domain": strings.SplitN(state.EntityID, ".", 2)[0], "state": state.State, "room": state.Room})
 		}
 		status["device_summary"] = summary
 		writeJSON(w, 200, status)
 		return
 	}
 	if path == "/home/devices" && r.Method == "GET" {
-		states, err := s.ha.States(ctx)
+		states, err := s.ha.DashboardStates(ctx)
 		if err != nil {
 			fail(w, 502, err.Error())
 			return
 		}
 		devices := []map[string]any{}
+		includeSensors := r.URL.Query().Get("include_sensors") == "true"
 		for _, state := range states {
+			if !state.HomeCandidate() || (!includeSensors && !state.HomeVisible()) {
+				continue
+			}
 			domain := strings.SplitN(state.EntityID, ".", 2)[0]
 			actions := []string{}
 			params := map[string][]string{}
@@ -382,7 +382,8 @@ func (s *Server) frontendHA(ctx context.Context, w http.ResponseWriter, r *http.
 				params["turn_on"] = turnOn
 			}
 			devices = append(devices, map[string]any{"id": state.EntityID, "entity_id": state.EntityID, "name": stateName(state), "domain": domain,
-				"state": state.State, "attributes": state.Attributes, "supported_actions": actions, "action_params": params, "home_visible": true, "last_updated": time.Now().UTC().Format(time.RFC3339)})
+				"area_id": state.AreaID, "room": state.Room, "device_id": state.DeviceID,
+				"state": state.State, "attributes": state.Attributes, "supported_actions": actions, "action_params": params, "home_visible": state.HomeVisible(), "last_updated": time.Now().UTC().Format(time.RFC3339)})
 		}
 		writeJSON(w, 200, devices)
 		return

@@ -30,9 +30,11 @@ services:
       - ./cmd:/src/cmd
       - ./internal:/src/internal
       - ./go.mod:/src/go.mod
+      - ./go.sum:/src/go.sum
     environment:
       NOMA_LOCAL_ADDR: 0.0.0.0:3000
       NOMA_WEB_URL: http://noma-web:3000
+      NOMA_HA_URL: http://localhost:8123
     extra_hosts:
       - "host.docker.internal:host-gateway"
     cap_drop: [ALL]

@@ -7,8 +7,9 @@ const ts = require("typescript");
 
 function deferred() {
   let resolve;
-  const promise = new Promise(done => { resolve = done; });
-  return { promise, resolve };
+  let reject;
+  const promise = new Promise((done, fail) => { resolve = done; reject = fail; });
+  return { promise, resolve, reject };
 }
 
 function setup({ dashboard = false, token = null, method = "google", sessionReady = false } = {}) {
@@ -139,6 +140,16 @@ test("the gateway-validated Google destination opens the application without a s
   assert.deepEqual(page.calls, ["session"]);
   assert.equal(page.render().type, "user");
   page.session.resolve(true);
+  await flush();
+  assert.equal(page.render().type, "user");
+  assert.deepEqual(page.navigations, []);
+});
+
+test("a temporary sync failure keeps a gateway-validated application open", async () => {
+  const page = setup({ dashboard: true, sessionReady: true });
+  assert.equal(page.render().type, "user");
+  page.mount();
+  page.session.reject(new Error("gateway temporarily unavailable"));
   await flush();
   assert.equal(page.render().type, "user");
   assert.deepEqual(page.navigations, []);

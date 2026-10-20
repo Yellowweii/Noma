@@ -10,13 +10,30 @@ import (
 func TestDefaultsStartWithoutEnvironmentOrConfigFile(t *testing.T) {
 	t.Setenv("NOMA_LOCAL_ADDR", "")
 	t.Setenv("NOMA_WEB_URL", "")
+	t.Setenv("NOMA_HA_URL", "")
 	cfg, err := LoadConfig(filepath.Join(t.TempDir(), "missing.json"))
-	if err != nil || cfg.Addr != "127.0.0.1:3100" || cfg.CloudURL != "https://noma-ai.cloud" || cfg.WebURL != "http://127.0.0.1:3001" || cfg.SecureCookie {
+	if err != nil || cfg.Addr != "127.0.0.1:3100" || cfg.CloudURL != "https://noma-ai.cloud" || cfg.WebURL != "http://127.0.0.1:3001" || cfg.HAURL != "http://localhost:8123" || cfg.SecureCookie {
 		t.Fatalf("default configuration failed: %v", err)
 	}
 	server, err := New(cfg)
-	if err != nil || server.ha.Configured() || len(server.ha.Allowed()) != 0 {
+	if err != nil || server.ha.Configured() || strings.Join(server.ha.Allowed(), ",") != "*" {
 		t.Fatal("missing local configuration must grant no HA access")
+	}
+}
+
+func TestDockerHADefaultDoesNotOverrideSavedAddress(t *testing.T) {
+	t.Setenv("NOMA_HA_URL", "http://host.docker.internal:8123")
+	path := filepath.Join(t.TempDir(), "local.json")
+	cfg, err := LoadConfig(path)
+	if err != nil || cfg.HAURL != "http://host.docker.internal:8123" {
+		t.Fatal("Docker HA default was not applied")
+	}
+	if err := os.WriteFile(path, []byte(`{"ha_url":"http://localhost:8123"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err = LoadConfig(path)
+	if err != nil || cfg.HAURL != "http://localhost:8123" {
+		t.Fatal("Docker default overrode saved household address")
 	}
 }
 

@@ -21,10 +21,43 @@ type Client struct {
 
 // Account belongs to one local browser session. Cloud credentials never leave the backend.
 type Account struct {
-	mu           sync.Mutex
+	mu             sync.Mutex
+	AccessToken    string
+	RefreshToken   string
+	ExpiresAt      time.Time
+	persistRefresh func(Credentials) error
+	persistPending bool
+}
+
+// Credentials are checkpointed only by the local backend, never returned to a
+// browser. Keeping the access expiry avoids a forced refresh on every restart.
+type Credentials struct {
 	AccessToken  string
 	RefreshToken string
 	ExpiresAt    time.Time
+}
+
+// PersistRefreshToken binds backend-only storage to this account. Refreshed
+// credentials are checkpointed before they can be used by another request.
+func (a *Account) PersistRefreshToken(save func(string) error) error {
+	return a.PersistCredentials(func(credentials Credentials) error { return save(credentials.RefreshToken) })
+}
+
+func (a *Account) PersistCredentials(save func(Credentials) error) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.RefreshToken == "" {
+		return fmt.Errorf("云端未提供可续期的登录凭证")
+	}
+	if err := save(a.credentials()); err != nil {
+		return err
+	}
+	a.persistRefresh, a.persistPending = save, false
+	return nil
+}
+
+func (a *Account) credentials() Credentials {
+	return Credentials{AccessToken: a.AccessToken, RefreshToken: a.RefreshToken, ExpiresAt: a.ExpiresAt}
 }
 
 type APIError struct{ Status int }
@@ -105,10 +138,13 @@ func (a *Account) update(out tokenResponse, cookies []*http.Cookie) error {
 	a.AccessToken = out.AccessToken
 	a.ExpiresAt = time.Now().Add(time.Duration(out.ExpiresIn) * time.Second)
 	for _, cookie := range cookies {
-		if cookie.Name == refreshCookie {
+		// A response may clear an obsolete cookie path as well as setting the
+		// replacement. Such a clearing cookie is not a new refresh credential.
+		if cookie.Name == refreshCookie && cookie.Value != "" && cookie.MaxAge >= 0 {
 			a.RefreshToken = cookie.Value
 		}
 	}
+	a.persistPending = a.persistRefresh != nil
 	return nil
 }
 
@@ -138,6 +174,12 @@ func (c *Client) Do(ctx context.Context, a *Account, method, path string, input,
 func (c *Client) AccessToken(ctx context.Context, a *Account) (string, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if a.persistPending {
+		if err := a.persistRefresh(a.credentials()); err != nil {
+			return "", err
+		}
+		a.persistPending = false
+	}
 	if time.Until(a.ExpiresAt) < 30*time.Second {
 		var out tokenResponse
 		cookies, err := c.request(ctx, "POST", "/api/v1/auth/refresh", "", a.RefreshToken, nil, &out)
@@ -147,6 +189,14 @@ func (c *Client) AccessToken(ctx context.Context, a *Account) (string, error) {
 		if err != nil {
 			return "", err
 		}
+	}
+	if a.persistPending {
+		if err := a.persistRefresh(a.credentials()); err != nil {
+			// Keep a rotated refresh token in memory so a storage error can be
+			// repaired without replaying the refresh request with its old token.
+			return "", err
+		}
+		a.persistPending = false
 	}
 	return a.AccessToken, nil
 }

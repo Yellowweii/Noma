@@ -45,9 +45,23 @@ func (s *Server) processTurn(ctx context.Context, sess *session, req turnInput) 
 		}
 		return cached
 	}
+	if previous, exists := sess.requests[req.RequestID]; exists {
+		if previous != digest {
+			return failure(409, "同一请求 ID 不可更改内容")
+		}
+		return failure(409, "此请求在服务重启前已开始，结果无法恢复；请先检查设备状态，不会重复执行")
+	}
 	// Never evict a replay entry during the local login session.
-	if len(sess.turns) >= 128 {
+	if len(sess.requests) >= 128 {
 		return failure(429, "本地会话已达 128 轮，请退出并重新登录")
+	}
+	if sess.requests == nil {
+		sess.requests = map[string][32]byte{}
+	}
+	sess.requests[req.RequestID] = digest
+	if err := s.bindSessionPersistence(sess); err != nil {
+		delete(sess.requests, req.RequestID)
+		return failure(500, "无法保存本地操作记录，未发起新的操作")
 	}
 	out, err := s.runTurn(ctx, sess.account, req)
 	status := 200

@@ -1,6 +1,7 @@
 FROM golang:1.25-alpine
 WORKDIR /src
-COPY go.mod ./
+COPY go.mod go.sum ./
+RUN go mod download
 COPY cmd ./cmd
 COPY internal ./internal
 COPY scripts/dev-reload.sh /usr/local/bin/dev-reload.sh

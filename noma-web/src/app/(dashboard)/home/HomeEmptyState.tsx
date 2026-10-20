@@ -37,14 +37,6 @@ export function HomeEmptyState() {
             <Link href="/settings/ha" className={styles.connectButton}>
               连接 Home Assistant
             </Link>
-            <a
-              href="https://www.home-assistant.io/getting-started/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className={styles.tutorialLink}
-            >
-              查看接入教程
-            </a>
           </div>
         </section>
 

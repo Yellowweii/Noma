@@ -51,27 +51,6 @@
   background: var(--noma-brand-hover);
 }
 
-.tutorialLink {
-  display: inline-flex;
-  min-height: 44px;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  padding: 11px 24px;
-  border: 1px solid var(--noma-border);
-  border-radius: var(--radius-pill);
-  background: var(--card);
-  color: var(--noma-text-primary);
-  font-size: 15px;
-  line-height: 20px;
-  text-decoration: none;
-  transition: background-color 150ms ease;
-}
-
-.tutorialLink:hover {
-  background: var(--noma-surface-soft);
-}
-
 .quickStart {
   margin-top: 40px;
   padding-top: 32px;

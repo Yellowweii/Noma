@@ -1,14 +1,13 @@
 "use client";
 
 import { useEffect } from "react";
-import { getUserId } from "@/lib/auth";
 import { startHAConnectionMonitor } from "@/lib/haConnectionSnapshot";
 
 export function HAConnectionMonitor({ enabled }: { enabled: boolean }) {
-  const userId = enabled ? getUserId() : null;
   useEffect(() => {
-    if (!userId) return;
-    return startHAConnectionMonitor(userId);
-  }, [userId]);
+    if (!enabled) return;
+    // The monitor also retries session bootstrap after temporary failures.
+    return startHAConnectionMonitor();
+  }, [enabled]);
   return null;
 }

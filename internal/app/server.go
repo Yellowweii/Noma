@@ -21,7 +21,6 @@ import (
 )
 
 const cookieName = "noma_local_session"
-const sessionLifetime = 8 * time.Hour
 
 var idPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{16,80}$`)
 
@@ -32,25 +31,40 @@ type cachedTurn struct {
 }
 type session struct {
 	mu           sync.Mutex
+	key          string
 	expires      time.Time
 	account      *cloud.Account
 	turns        map[string]cachedTurn
+	requests     map[string][32]byte
 	userID       string
 	haAuthorized bool
+	haRevision   uint64
+	haGrant      string
 }
 type Server struct {
-	cfg      Config
-	ha       *ha.Client
-	cloud    *cloud.Client
-	mu       sync.Mutex
-	sessions map[string]*session
-	pending  map[string]pendingOAuth
-	web      http.Handler
+	cfg        Config
+	ha         *ha.Client
+	haMu       sync.RWMutex
+	haRevision uint64
+	cloud      *cloud.Client
+	mu         sync.Mutex
+	sessions   map[string]*session
+	pending    map[string]pendingOAuth
+	web        http.Handler
 }
 
 func New(cfg Config) (*Server, error) {
+	if cfg.path == "" {
+		cfg.path = "data/local.json"
+	}
+	if cfg.HAURL == "" {
+		cfg.HAURL = env("NOMA_HA_URL", DefaultHAURL)
+	}
 	if cfg.WebURL == "" {
 		cfg.WebURL = "http://127.0.0.1:3001"
+	}
+	if cfg.AllowedEntities == nil {
+		cfg.AllowedEntities = []string{"*"}
 	}
 	if err := cfg.validate(); err != nil {
 		return nil, err
@@ -64,7 +78,11 @@ func New(cfg Config) (*Server, error) {
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
 		fail(w, 502, "Noma 前端尚未启动，请启动 noma-web 服务")
 	}
-	return &Server{cfg: cfg, ha: haClient, cloud: cloud.New(cfg.CloudURL), web: proxy, sessions: map[string]*session{}, pending: map[string]pendingOAuth{}}, nil
+	s := &Server{cfg: cfg, ha: haClient, cloud: cloud.New(cfg.CloudURL), web: proxy, sessions: map[string]*session{}, pending: map[string]pendingOAuth{}}
+	if err := s.loadSessions(); err != nil {
+		return nil, err
+	}
+	return s, nil
 }
 
 func randomID() string {
@@ -177,12 +195,17 @@ func (s *Server) getSession(r *http.Request) *session {
 		return nil
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	sess := s.sessions[cookie.Value]
-	if sess != nil && time.Now().Before(sess.expires) {
+	sess := s.sessions[sessionKey(cookie.Value)]
+	s.mu.Unlock()
+	if sess == nil {
+		return nil
+	}
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+	if time.Now().Before(sess.expires) {
 		return sess
 	}
-	delete(s.sessions, cookie.Value)
+	_ = s.deleteSession(sess)
 	return nil
 }
 
@@ -202,29 +225,38 @@ func (s *Server) authorizeHA(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &input) {
 		return
 	}
-	sess.haAuthorized = true
+	s.haMu.RLock()
+	defer s.haMu.RUnlock()
+	previousAuthorized, previousGrant, previousRevision := sess.haAuthorized, sess.haGrant, sess.haRevision
+	sess.haAuthorized, sess.haGrant = true, s.haGrantFingerprint()
+	sess.haRevision = s.haRevision
+	if err := s.bindSessionPersistence(sess); err != nil {
+		sess.haAuthorized, sess.haGrant, sess.haRevision = previousAuthorized, previousGrant, previousRevision
+		fail(w, 500, "无法保存本地设备授权，请检查后端数据目录权限")
+		return
+	}
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }
 
 // Cloud login creates a browser session; device access is enabled separately by the signed-in browser.
 func (s *Server) saveSession(w http.ResponseWriter, sess *session, sameSite http.SameSite) bool {
+	s.pruneSessions()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := time.Now()
-	for key, sess := range s.sessions {
-		if now.After(sess.expires) {
-			delete(s.sessions, key)
-		}
-	}
 	if len(s.sessions) >= 64 {
 		fail(w, 429, "本地会话过多，请稍后重试")
 		return false
 	}
 	id := randomID()
+	sess.key = sessionKey(id)
 	sess.expires = now.Add(sessionLifetime)
-	s.sessions[id] = sess
-	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: id, Path: "/", HttpOnly: true, Secure: s.cfg.SecureCookie,
-		SameSite: sameSite, MaxAge: int(sessionLifetime.Seconds())})
+	if err := s.bindSessionPersistence(sess); err != nil {
+		fail(w, 500, "无法保存本地登录状态，请检查后端数据目录权限")
+		return false
+	}
+	s.sessions[sess.key] = sess
+	s.setSessionCookie(w, id, sameSite)
 	return true
 }
 
@@ -256,12 +288,36 @@ func (s *Server) api(w http.ResponseWriter, r *http.Request) {
 	defer sess.mu.Unlock()
 	ctx, cancel := context.WithTimeout(r.Context(), 150*time.Second)
 	defer cancel()
+	if sess.account != nil && !strings.HasSuffix(path, "/logout") && time.Until(sess.expires) < sessionLifetime-sessionRenewInterval {
+		if err := s.renewSession(ctx, w, r, sess); err != nil {
+			cloudFailure(w, err)
+			return
+		}
+	}
+	if path == "/api/local/ha/configure" && r.Method == "POST" && sess.account != nil {
+		s.configureHA(ctx, w, r, sess)
+		return
+	}
+	if path == "/api/local/ha/name" && r.Method == "POST" && sess.account != nil {
+		s.saveHomeName(w, r, sess)
+		return
+	}
+	s.haMu.RLock()
+	defer s.haMu.RUnlock()
+	if sess.haRevision != s.haRevision {
+		sess.haAuthorized = false
+		sess.haGrant = ""
+	}
 	if strings.HasPrefix(path, "/api/v1/") {
 		s.frontendAPI(ctx, w, r, sess)
 		return
 	}
 	if sess.account == nil {
 		fail(w, 401, "请先登录 Noma 云端账号")
+		return
+	}
+	if path == "/api/local/ha/defaults" && r.Method == "GET" {
+		writeJSON(w, 200, map[string]string{"ha_url": env("NOMA_HA_URL", DefaultHAURL)})
 		return
 	}
 	if !sess.haAuthorized {
@@ -275,7 +331,7 @@ func (s *Server) api(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case path == "/api/local/status" && r.Method == "GET":
 		writeJSON(w, 200, map[string]any{"ha_authorized": true, "cloud_url": s.cfg.CloudURL, "logged_in": sess.account != nil,
-			"ha_configured": s.ha.Configured(), "ha_url": s.cfg.HAURL, "allowed_entities": s.ha.Allowed(), "protocol_version": "1"})
+			"ha_configured": s.ha.Configured(), "ha_url": s.cfg.HAURL, "allowed_entities": s.ha.Allowed(), "protocol_version": "1", "home_name": s.homeName(), "last_connected_at": s.cfg.HAConnectedAt})
 	case path == "/api/local/auth/send-code" && r.Method == "POST":
 		var req struct {
 			Email string `json:"email"`
@@ -304,31 +360,25 @@ func (s *Server) api(w http.ResponseWriter, r *http.Request) {
 			fail(w, 400, "请输入邮箱及六位验证码")
 			return
 		}
-		account, err := s.cloud.Login(ctx, req.Email, req.Code)
+		account, body, err := s.cloud.Authenticate(ctx, "/api/v1/auth/otp/verify", "", map[string]string{"email": req.Email, "code": req.Code})
 		if err != nil {
 			fail(w, 502, err.Error())
 			return
 		}
-		if sess.account != nil {
-			s.cloud.Logout(ctx, sess.account)
+		if !s.replaceLogin(ctx, w, sess, account, accountUserID(body), http.SameSiteStrictMode) {
+			return
 		}
-		sess.account = account
-		sess.haAuthorized = false
-		// Replay responses belong to the previous cloud identity, if any.
-		sess.turns = map[string]cachedTurn{}
 		writeJSON(w, 200, map[string]bool{"ok": true})
 	case path == "/api/local/auth/logout" && r.Method == "POST":
+		if err := s.deleteSession(sess); err != nil {
+			fail(w, 500, "无法撤销本地登录状态，请检查后端数据目录权限")
+			return
+		}
 		if sess.account != nil {
 			s.cloud.Logout(ctx, sess.account)
 			sess.account = nil
 		}
-		s.mu.Lock()
-		if cookie, err := r.Cookie(cookieName); err == nil {
-			delete(s.sessions, cookie.Value)
-		}
-		s.mu.Unlock()
-		http.SetCookie(w, &http.Cookie{Name: cookieName, Value: "", Path: "/", MaxAge: -1, HttpOnly: true,
-			Secure: s.cfg.SecureCookie, SameSite: http.SameSiteStrictMode})
+		s.clearSessionCookie(w)
 		writeJSON(w, 200, map[string]bool{"ok": true})
 	case path == "/api/local/ha/check" && r.Method == "POST":
 		if err := s.ha.Check(ctx); err != nil {

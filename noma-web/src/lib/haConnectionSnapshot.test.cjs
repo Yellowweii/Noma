@@ -11,6 +11,7 @@ const offline = { ...online, ha_reachable: false, can_authorize: false, frpc_onl
 function setup() {
   let connection = online;
   let status = { configured: true, ha_reachable: true };
+  let userId = "user", bootstrapCalls = 0, bootstrapFails = false;
   let home;
   const storage = new Map();
   const timers = new Map();
@@ -24,7 +25,7 @@ function setup() {
   };
   const mocks = {
     "./api": { api },
-    "./auth": { getUserId: () => "user", bootstrapSession: async () => true },
+    "./auth": { getUserId: () => userId, bootstrapSession: async () => { bootstrapCalls++; if (bootstrapFails) throw new Error("temporary bootstrap failure"); userId = "user"; return true; } },
     "./homeSnapshot": { writeHomeSnapshot: update => { home = update(home); } },
   };
   const context = {
@@ -39,7 +40,7 @@ function setup() {
   vm.runInNewContext(source, context);
   const store = context.exports;
   store.writeHAConnectionSnapshot(online, true, true);
-  return { store, api, timers, home: () => home, connection: value => { connection = value; }, status: value => { status = value; } };
+  return { store, api, timers, home: () => home, connection: value => { connection = value; }, status: value => { status = value; }, user: id => { userId = id; }, bootstrapFails: value => { bootstrapFails = value; }, bootstrapCalls: () => bootstrapCalls };
 }
 
 test("a stopped tunnel overrides a conflicting successful home response", async () => {
@@ -105,4 +106,24 @@ test("a stale refresh cannot overwrite a name saved while the request was runnin
   await refreshing;
   assert.equal(app.store.readHAConnectionSnapshot().connection.home_name, "新名称");
   assert.equal(app.store.readHAConnectionSnapshot().connected, true);
+});
+
+test("monitor starts before identity restoration and retries a temporary bootstrap failure", async () => {
+  const app = setup();
+  app.user(null); app.bootstrapFails(true);
+  const stop = app.store.startHAConnectionMonitor();
+  async function tick() {
+    const [id, callback] = app.timers.entries().next().value;
+    app.timers.delete(id); await callback();
+  }
+  await tick();
+  assert.equal(app.bootstrapCalls(),1);
+  assert.equal(app.timers.size,1);
+  app.bootstrapFails(false); app.connection(offline);
+  await tick();
+  assert.equal(app.bootstrapCalls(),2);
+  assert.equal(app.store.readHAConnectionSnapshot().connected,false);
+  app.connection(online); await tick();
+  assert.equal(app.store.readHAConnectionSnapshot().connected,true);
+  stop(); assert.equal(app.timers.size,0);
 });

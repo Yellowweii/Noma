@@ -84,9 +84,13 @@ func (s *Server) finishCloudLogin(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/login?error=cloud&next="+url.QueryEscape(pending.next), http.StatusSeeOther)
 		return
 	}
-	sess := &session{turns: map[string]cachedTurn{}, account: account, userID: accountUserID(body)}
-	if !s.saveSession(w, sess, http.SameSiteLaxMode) {
-		s.cloud.Logout(ctx, account)
+	previous := s.getSession(r)
+	if previous == nil {
+		previous = &session{}
+	}
+	previous.mu.Lock()
+	defer previous.mu.Unlock()
+	if !s.replaceLogin(ctx, w, previous, account, accountUserID(body), http.SameSiteLaxMode) {
 		return
 	}
 	// The cloud synchronization screen stays visible during this exchange. Enter the

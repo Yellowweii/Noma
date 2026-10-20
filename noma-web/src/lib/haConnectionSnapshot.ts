@@ -4,7 +4,7 @@ import { writeHomeSnapshot } from "./homeSnapshot";
 import type { HAConnectionStatus } from "@/types";
 
 export const HA_CONNECTION_REFRESH_MS = 10000;
-const DEFAULT_HA_URL = "http://host.docker.internal:8123";
+const DEFAULT_HA_URL = "http://localhost:8123";
 
 export type HAConnectionSnapshot = {
   userId: string;
@@ -64,7 +64,7 @@ export function writeHAConnectionSnapshot(connection: HAConnectionStatus, connec
       if (saved && Number.isFinite(Date.parse(saved))) lastConnectedAt = saved;
     } catch { /* Older timestamps are optional. */ }
   }
-  if (connected && verified) lastConnectedAt = new Date().toISOString();
+  if (connected && verified) lastConnectedAt = connection.last_connected_at && Date.parse(connection.last_connected_at) > 0 ? connection.last_connected_at : new Date().toISOString();
   const snapshot = { userId, connection: { ...connection }, connected, lastConnectedAt, checkedAt: Date.now() };
   revisions.set(userId, (revisions.get(userId) ?? 0) + 1);
   snapshots.set(userId, snapshot);
@@ -115,7 +115,7 @@ export async function refreshHAConnectionSnapshot(userId = getUserId()): Promise
 }
 
 // Mounted by the dashboard shell, so changing pages does not stop checking HA.
-export function startHAConnectionMonitor(userId: string) {
+export function startHAConnectionMonitor(userId?: string) {
   let stopped = false;
   let timeout: ReturnType<typeof setTimeout>;
   async function check() {

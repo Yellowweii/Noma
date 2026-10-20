@@ -9,7 +9,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { Device } from "@/types";
-import { activeDevice, deviceDetails, hasDetailControls, isSpeaker, isWhiteLight, lightBrightnessPct, lightColorHex, lightColorParams, modeLabels, numberAttribute, specializedHomeDomains, stateText, stringAttribute, stringList, supports, unavailable, whiteLightParams } from "./home-devices";
+import { activeDevice, deviceDetails, hasDetailControls, isSpeaker, isWhiteLight, lightBrightnessPct, lightColorHex, lightColorParams, modeLabels, numberAttribute, specializedHomeDomains, stateText, stringAttribute, stringList, supports, supportsLightColor, unavailable, whiteLightParams } from "./home-devices";
 import styles from "./home-dashboard.module.css";
 
 type Control = (action: string, params?: Record<string, unknown>) => Promise<boolean>;
@@ -155,7 +155,7 @@ function LightColorControl({ device, disabled, onControl }: { device: Device; di
   const color = lightColorHex(device);
   const whiteParams = whiteLightParams(device);
   const whiteActive = isWhiteLight(device);
-  const withColor = supports(device, "turn_on", "rgb_color");
+  const withColor = supportsLightColor(device);
   const [draft, setDraft] = useState(color ?? "#ffffff");
   const [edited, setEdited] = useState(false);
   const [customOpen, setCustomOpen] = useState(false);
@@ -314,7 +314,7 @@ function DetailControls({ device, disabled, onControl }: { device: Device; disab
       value={brightness} disabled={unavailable(device) || device.state === "off"}
       hideUnknown hideZero
       onCommit={value => onControl("turn_on", { brightness_pct: value })} />}
-    {device.domain === "light" && (supports(device, "turn_on", "rgb_color") || whiteLightParams(device)) && <LightColorControl device={device}
+    {device.domain === "light" && (supportsLightColor(device) || whiteLightParams(device)) && <LightColorControl device={device}
       disabled={unavailable(device) || device.state === "off"} onControl={onControl} />}
     {device.domain === "cover" && hasDetailControls(device) && <RangeControl label="开合比例" accessibleLabel={`${device.name}开合比例`} smooth
       value={numberAttribute(device, "current_position")} disabled={unavailable(device)}

@@ -61,9 +61,11 @@ export function HomeDashboard() {
     syncHomeName();
     window.addEventListener("storage", syncHomeName);
     window.addEventListener("focus", syncHomeName);
+    window.addEventListener("noma-home-name", syncHomeName);
     return () => {
       window.removeEventListener("storage", syncHomeName);
       window.removeEventListener("focus", syncHomeName);
+      window.removeEventListener("noma-home-name", syncHomeName);
     };
   }, []);
 

@@ -10,7 +10,10 @@ require.extensions[".ts"] = (module, filename) => {
 };
 
 require("../src/lib/haConnectionSnapshot.test.cjs");
+require("../src/lib/homeSnapshot.test.cjs");
 require("../src/app/(dashboard)/home/home-device-control.test.ts");
+require("../src/app/(dashboard)/home/DeviceCard.test.cjs");
 require("../src/lib/localId.test.cjs");
 require("../src/lib/auth.test.cjs");
 require("../src/lib/loginCompletion.test.cjs");
+require("../src/components/settings/HASettingsContent.test.cjs");

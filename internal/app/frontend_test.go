@@ -251,7 +251,7 @@ func TestGatewayServesReusedNextFrontendWithoutInterceptingItsAssets(t *testing.
 			t.Fatal("login redirect lost original path")
 		}
 	}
-	server.sessions["test-browser"] = &session{account: &cloud.Account{}, expires: time.Now().Add(time.Hour)}
+	server.sessions[sessionKey("test-browser")] = &session{account: &cloud.Account{}, expires: time.Now().Add(time.Hour)}
 	r := httptest.NewRequest("GET", "http://127.0.0.1:3000/agent", nil)
 	r.AddCookie(&http.Cookie{Name: cookieName, Value: "test-browser"})
 	w := httptest.NewRecorder()
@@ -259,7 +259,7 @@ func TestGatewayServesReusedNextFrontendWithoutInterceptingItsAssets(t *testing.
 	if w.Code != 200 {
 		t.Fatalf("signed-in page: %d %s", w.Code, w.Body.String())
 	}
-	server.sessions["test-browser"].expires = time.Now().Add(-time.Second)
+	server.sessions[sessionKey("test-browser")].expires = time.Now().Add(-time.Second)
 	w = httptest.NewRecorder()
 	server.ServeHTTP(w, r)
 	if w.Code != 303 {

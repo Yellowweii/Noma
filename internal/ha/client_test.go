@@ -136,3 +136,71 @@ func TestServiceAcknowledgementDoesNotInventObservedState(t *testing.T) {
 		t.Fatalf("invented state: %s", b)
 	}
 }
+
+func TestAllEntitiesKeepServiceAndParameterBoundaries(t *testing.T) {
+	var writes atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" {
+			writes.Add(1)
+			_, _ = w.Write([]byte(`[]`))
+			return
+		}
+		if r.URL.Path == "/api/states/light.missing" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.URL.Path == "/api/states/light.mismatch" {
+			_, _ = w.Write([]byte(`{"entity_id":"light.other"}`))
+			return
+		}
+		if r.URL.Path == "/api/states" {
+			_, _ = w.Write([]byte(`[{"entity_id":"light.new","state":"on","attributes":{"friendly_name":"New lamp","private_value":"hidden"}}]`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"entity_id":"light.new","state":"on"}`))
+	}))
+	defer server.Close()
+	client, err := New(server.URL, "test-token", []string{"*"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	states, err := client.States(context.Background())
+	if err != nil || len(states) != 1 || states[0].EntityID != "light.new" || states[0].Attributes["private_value"] != nil {
+		t.Fatal("all-entity read lost devices or leaked private attributes")
+	}
+	for _, args := range []Control{
+		{EntityID: "light.new/../../config", Action: "turn_on"},
+		{EntityID: "script.unsafe", Action: "turn_on"},
+		{EntityID: "light.new", Action: "toggle"},
+		{EntityID: "light.new", Action: "turn_on", Params: map[string]any{"entity_id": "all"}},
+		{EntityID: "light.new", Action: "turn_on", Params: map[string]any{"brightness": float64(999)}},
+		{EntityID: "light.missing", Action: "turn_on"},
+		{EntityID: "light.mismatch", Action: "turn_on"},
+	} {
+		if _, err := client.Control(context.Background(), args); err == nil {
+			t.Fatalf("invalid all-entity control accepted: %s", args.EntityID)
+		}
+	}
+	if writes.Load() != 0 {
+		t.Fatal("invalid all-entity controls reached HA")
+	}
+	if _, err := client.Control(context.Background(), Control{EntityID: "light.new", Action: "turn_on"}); err != nil || writes.Load() != 1 {
+		t.Fatal("new HA entity could not be controlled")
+	}
+	if _, err := New(server.URL, "test-token", []string{"*", "light.new"}); err == nil {
+		t.Fatal("mixed wildcard scope was accepted")
+	}
+}
+
+func TestAllEntitiesRejectMalformedHouseholdStates(t *testing.T) {
+	for _, body := range []string{`null`, `[{"entity_id":"light.bad/../../config"}]`} {
+		t.Run(body, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(body)) }))
+			defer server.Close()
+			client, _ := New(server.URL, "test-token", []string{"*"})
+			if _, err := client.States(context.Background()); err == nil {
+				t.Fatal("invalid household state response accepted")
+			}
+		})
+	}
+}

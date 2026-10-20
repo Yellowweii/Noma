@@ -156,6 +156,7 @@ export interface UserSettings {
 }
 
 export interface HAConnectionStatus {
+  last_connected_at?: string;
   available: boolean;
   prepared: boolean;
   connection_id?: string;

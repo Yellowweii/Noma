@@ -3,10 +3,11 @@
 # do not deliver filesystem events into the container.
 cd /src || exit 1
 bin=/tmp/noma-local
+next_bin=/tmp/noma-local.next
 pidfile=/tmp/noma-local.pid
 
 snapshot() {
-	find cmd internal go.mod -type f \( -name '*.go' -o -name 'go.mod' \) 2>/dev/null | sort | while read -r file; do
+	find cmd internal go.mod go.sum -type f \( -name '*.go' -o -name 'go.mod' -o -name 'go.sum' \) ! -name '*_test.go' 2>/dev/null | sort | while read -r file; do
 		sha256sum "$file"
 	done | sha256sum
 }
@@ -31,19 +32,23 @@ stop_server() {
 }
 
 start_server() {
-	if go build -o "$bin" ./cmd/noma-local; then
-		"$bin" --config=/data/local.json &
-		echo $! >"$pidfile"
-		return 0
-	fi
-	echo "go build failed; waiting for the next change" >&2
+	"$bin" --config=/data/local.json &
+	echo $! >"$pidfile"
+}
+
+build_server() {
+	if go build -o "$next_bin" ./cmd/noma-local; then return 0; fi
+	echo "go build failed; keeping the current gateway running" >&2
 	return 1
 }
 
 trap 'stop_server; exit 0' INT TERM
 
-echo "watching cmd, internal, and go.mod"
-start_server || true
+echo "watching cmd, internal, go.mod, and go.sum"
+if build_server; then
+	mv "$next_bin" "$bin"
+	start_server
+fi
 last=$(snapshot)
 while true; do
 	sleep 1 || true
@@ -53,7 +58,10 @@ while true; do
 		now=$(snapshot)
 		last=$now
 		echo "Go source changed; rebuilding"
-		stop_server
-		start_server || true
+		if build_server; then
+			stop_server
+			mv "$next_bin" "$bin"
+			start_server
+		fi
 	fi
 done

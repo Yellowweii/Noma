@@ -1,5 +1,5 @@
-// Package protocol defines the proposed Noma Cloud remote-tool contract.
-// The current private cloud has not implemented these endpoints yet.
+// Package protocol defines the Noma Cloud remote-tool contract shared with
+// the cloud Local chat adapter. Agent execution and credentials stay in cloud.
 package protocol
 
 import (

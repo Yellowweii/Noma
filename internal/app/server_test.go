@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -47,6 +48,10 @@ func newFixture(t *testing.T, options fixtureOptions) *fixture {
 	}
 	ha := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f.haRequests.Add(1)
+		if r.URL.Path == "/api/websocket" {
+			http.NotFound(w, r) // This fixture models an older HA without registry access.
+			return
+		}
 		if r.Header.Get("Authorization") != "Bearer test-ha-secret" {
 			t.Error("HA did not receive its own token")
 		}
@@ -167,7 +172,7 @@ func newFixture(t *testing.T, options fixtureOptions) *fixture {
 			if r.Header.Get("Authorization") != "Bearer test-cloud-access" {
 				t.Error("account route did not use backend credential")
 			}
-			writeJSON(w, 200, map[string]string{"user_id": "test-user", "name": "Test"})
+			writeJSON(w, 200, map[string]string{"user_id": "test-user", "name": "Google Test User", "email": "test@example.invalid", "avatar_url": "https://example.invalid/test-avatar.png"})
 		case "/api/v1/memory/overview":
 			writeJSON(w, 200, map[string]int{"total_memories": 3, "recorded_days": 2})
 		case "/api/v1/settings":
@@ -214,7 +219,7 @@ func newFixture(t *testing.T, options fixtureOptions) *fixture {
 	}))
 	t.Cleanup(cloud.Close)
 	f.cloudURL = cloud.URL
-	server, err := New(Config{CloudURL: cloud.URL, HAURL: ha.URL, HAToken: "test-ha-secret", AllowedEntities: []string{"light.allowed"}})
+	server, err := New(Config{CloudURL: cloud.URL, HAURL: ha.URL, HAToken: "test-ha-secret", AllowedEntities: []string{"light.allowed"}, path: filepath.Join(t.TempDir(), "local.json")})
 	if err != nil {
 		t.Fatal(err)
 	}

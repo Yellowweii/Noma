@@ -36,21 +36,22 @@ export async function refreshAccessToken(): Promise<boolean> {
         method: "POST",
         credentials: "include",
       });
-      if (!res.ok) {
+      if (res.status === 401) {
         clearAccessToken();
         return false;
       }
+      if (!res.ok) throw new Error("登录状态暂时无法同步，请稍后重试");
       const body = (await res.json()) as { access_token?: string; user_id?: string };
       if (!body.access_token) {
-        clearAccessToken();
-        return false;
+        throw new Error("登录状态同步响应无效，请稍后重试");
       }
       setAccessToken(body.access_token);
       if (body.user_id) setUserId(body.user_id);
       return true;
-    } catch {
-      clearAccessToken();
-      return false;
+    } catch (error) {
+      // A gateway restart, network failure or cloud outage does not revoke the
+      // HttpOnly session. Only an explicit 401 requires another login.
+      throw error instanceof Error ? error : new Error("登录状态暂时无法同步，请稍后重试");
     } finally {
       refreshPromise = null;
     }
@@ -74,15 +75,13 @@ export async function bootstrapSession(): Promise<boolean> {
 }
 
 export async function logoutSession(): Promise<void> {
-  try {
-    await fetch(`${API_BASE}/auth/logout`, {
-      method: "POST",
-      credentials: "include",
-    });
-  } finally {
-    clearAccessToken();
-    clearLoginSessionState();
-  }
+  const response = await fetch(`${API_BASE}/auth/logout`, {
+    method: "POST",
+    credentials: "include",
+  });
+  if (!response.ok) throw new Error("退出登录失败，请稍后重试");
+  clearAccessToken();
+  clearLoginSessionState();
 }
 
 /** @deprecated use getAccessToken */

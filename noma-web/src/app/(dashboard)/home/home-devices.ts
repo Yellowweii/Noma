@@ -20,6 +20,9 @@ export function stringList(device: Device, key: string): string[] {
 export function supports(device: Device, action: string, parameter?: string): boolean {
   return Boolean(device.supported_actions?.includes(action) && (!parameter || device.action_params?.[action]?.includes(parameter)));
 }
+export function supportsLightColor(device: Device): boolean {
+  return device.domain === "light" && ["rgb_color", "rgbw_color", "rgbww_color"].some(parameter => supports(device, "turn_on", parameter));
+}
 export function lightColorHex(device: Device): string | undefined {
   if (isWhiteLight(device)) return "#ffffff";
   const mode = stringAttribute(device, "color_mode");
@@ -113,7 +116,7 @@ export function deviceDetails(device: Device): string[] {
 // Whether the detail panel offers anything beyond the card's common controls.
 export function hasDetailControls(device: Device): boolean {
   switch (device.domain) {
-    case "light": return supports(device, "turn_on", "brightness_pct") || supports(device, "turn_on", "rgb_color") || Boolean(whiteLightParams(device));
+    case "light": return supports(device, "turn_on", "brightness_pct") || supportsLightColor(device) || Boolean(whiteLightParams(device));
     case "cover": return supports(device, "set_cover_position", "position") && numberAttribute(device, "current_position") !== undefined;
     case "climate": return supports(device, "set_temperature", "temperature") ||
       (supports(device, "set_hvac_mode", "hvac_mode") && stringList(device, "hvac_modes").some(mode => mode !== "off")) ||

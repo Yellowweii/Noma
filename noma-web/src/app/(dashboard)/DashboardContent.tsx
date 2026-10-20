@@ -27,7 +27,10 @@ export function DashboardContent({ children, sessionReady = false }: {
         return;
       }
       setAuthenticated(true);
-    })();
+    })().catch(() => {
+      // Keep the gateway-validated page open during temporary sync failures;
+      // its data requests can report the error and recover on the next attempt.
+    });
     return () => { cancelled = true; };
   }, [pathname, router]);
 

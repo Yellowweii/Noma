@@ -1,6 +1,6 @@
 # 接下来如何接入 Noma Cloud
 
-本次只创建 Noma Public，没有改动相邻 Noma Private。
+以下为最初创建 Public 时的接入清单。2026-10-20 已经用户明确授权补齐并发布相邻 Private 的 Local 聊天及工具接口，真实账号聊天和只读工具对话验收通过；当前协议与运行限制以 [CLOUD_PROTOCOL.md](CLOUD_PROTOCOL.md) 为准，验证证据见 [VALIDATION.md](VALIDATION.md)。多副本执行恢复、实例 / 家庭绑定及真实设备写验收仍属后续工作。
 
 1. **云端工具执行边界**：当前 Private 的 `internal/handler/handler.go` 在 `SendMessage` 中注入用户 HA Client；`internal/service/agent/service.go` 的 `ChatRequest.HA` 和 `hatool.go` 直接调用 HA。规划、目录读取及上下文流水线也依赖 HA Client。需要为这些路径提供统一执行接口，不能只替换最终 `executeHATool`，否则云端仍会访问局域网设备。
 2. **Local turn 生命周期**：在云端增加协议文档中的三个端点。需要保存暂停的 Agent 轮次、待执行调用、有效期、关联用户 / 家庭 / 会话，并通过持久化状态支持多副本及崩溃恢复。不要直接公开 LLM provider 原始续接能力。
