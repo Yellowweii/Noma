@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"noma.local/public/internal/ha"
+	"noma.local/public/noma-backend/ha"
 )
 
 func TestConnectedHomeNameAndTimestampSurviveRestart(t *testing.T) {

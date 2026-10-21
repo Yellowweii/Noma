@@ -28,7 +28,7 @@ services:
     volumes:
       - noma_local_data:/data
       - ./cmd:/src/cmd
-      - ./internal:/src/internal
+      - ./noma-backend:/src/noma-backend
       - ./go.mod:/src/go.mod
       - ./go.sum:/src/go.sum
     environment:

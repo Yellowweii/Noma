@@ -11,7 +11,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"noma.local/public/internal/ha"
+	"noma.local/public/noma-backend/ha"
 )
 
 // A token is accepted once over the same-origin authenticated setup route. It is

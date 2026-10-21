@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"noma.local/public/internal/cloud"
+	"noma.local/public/noma-backend/cloud"
 )
 
 func browserSession(t *testing.T, f *fixture) (*Server, *session, *http.Cookie) {

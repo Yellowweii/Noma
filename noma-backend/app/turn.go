@@ -9,8 +9,8 @@ import (
 	"net/url"
 	"time"
 
-	"noma.local/public/internal/cloud"
-	"noma.local/public/internal/protocol"
+	"noma.local/public/noma-backend/cloud"
+	"noma.local/public/noma-backend/protocol"
 )
 
 type turnInput struct {

@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"noma.local/public/internal/protocol"
+	"noma.local/public/noma-backend/protocol"
 )
 
 const requestID = "request-00000000000001"

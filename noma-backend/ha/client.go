@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"noma.local/public/internal/protocol"
+	"noma.local/public/noma-backend/protocol"
 )
 
 var EntityPattern = regexp.MustCompile(`^[a-z_]+\.[a-z0-9_]+$`)

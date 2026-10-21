@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"noma.local/public/internal/app"
+	"noma.local/public/noma-backend/app"
 )
 
 func main() {

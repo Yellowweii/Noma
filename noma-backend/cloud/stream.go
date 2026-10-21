@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"strings"
 
-	"noma.local/public/internal/protocol"
+	"noma.local/public/noma-backend/protocol"
 )
 
 // ExchangeTurn negotiates incremental chat events without changing tool replies.

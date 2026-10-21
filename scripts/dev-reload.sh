@@ -7,7 +7,7 @@ next_bin=/tmp/noma-local.next
 pidfile=/tmp/noma-local.pid
 
 snapshot() {
-	find cmd internal go.mod go.sum -type f \( -name '*.go' -o -name 'go.mod' -o -name 'go.sum' \) ! -name '*_test.go' 2>/dev/null | sort | while read -r file; do
+	find cmd noma-backend go.mod go.sum -type f \( -name '*.go' -o -name 'go.mod' -o -name 'go.sum' \) ! -name '*_test.go' 2>/dev/null | sort | while read -r file; do
 		sha256sum "$file"
 	done | sha256sum
 }
@@ -44,7 +44,7 @@ build_server() {
 
 trap 'stop_server; exit 0' INT TERM
 
-echo "watching cmd, internal, go.mod, and go.sum"
+echo "watching cmd, noma-backend, go.mod, and go.sum"
 if build_server; then
 	mv "$next_bin" "$bin"
 	start_server

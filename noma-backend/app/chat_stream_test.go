@@ -8,7 +8,7 @@ import (
 	"sync"
 	"testing"
 
-	"noma.local/public/internal/protocol"
+	"noma.local/public/noma-backend/protocol"
 )
 
 func TestFrontendReceivesTokensBeforeLocalTurnCompletes(t *testing.T) {

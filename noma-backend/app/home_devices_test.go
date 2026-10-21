@@ -14,7 +14,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 
-	"noma.local/public/internal/ha"
+	"noma.local/public/noma-backend/ha"
 )
 
 func TestHomeDirectoryFiltersNoiseAndKeepsReadScopeSeparate(t *testing.T) {

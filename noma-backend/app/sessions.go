@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"noma.local/public/internal/cloud"
+	"noma.local/public/noma-backend/cloud"
 )
 
 const sessionLifetime = 30 * 24 * time.Hour

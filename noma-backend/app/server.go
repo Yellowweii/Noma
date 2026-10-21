@@ -16,8 +16,8 @@ import (
 	"sync"
 	"time"
 
-	"noma.local/public/internal/cloud"
-	"noma.local/public/internal/ha"
+	"noma.local/public/noma-backend/cloud"
+	"noma.local/public/noma-backend/ha"
 )
 
 const cookieName = "noma_local_session"

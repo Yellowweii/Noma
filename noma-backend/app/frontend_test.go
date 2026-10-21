@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"noma.local/public/internal/cloud"
+	"noma.local/public/noma-backend/cloud"
 )
 
 func frontendLogin(t *testing.T, f *fixture) {

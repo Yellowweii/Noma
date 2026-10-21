@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"noma.local/public/internal/protocol"
+	"noma.local/public/noma-backend/protocol"
 )
 
 func TestEntityAndParameterBoundaries(t *testing.T) {

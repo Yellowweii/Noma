@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"noma.local/public/internal/cloud"
-	"noma.local/public/internal/ha"
-	"noma.local/public/internal/protocol"
+	"noma.local/public/noma-backend/cloud"
+	"noma.local/public/noma-backend/ha"
+	"noma.local/public/noma-backend/protocol"
 )
 
 // Keep the existing frontend API shapes; device routes are always local.
