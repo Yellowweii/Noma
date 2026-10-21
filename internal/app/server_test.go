@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -27,6 +28,8 @@ const callID = "tool-call-00000000001"
 type fixtureOptions struct {
 	unsupported, expired, wrongBinding, failResults, duplicate, shortToken bool
 	plainChatUnavailable                                                   bool
+	streaming, streamFailure                                               bool
+	streamGate                                                             <-chan struct{}
 	entity                                                                 string
 }
 type fixture struct {
@@ -86,6 +89,33 @@ func newFixture(t *testing.T, options fixtureOptions) *fixture {
 		}
 		args, _ := json.Marshal(map[string]string{"entity_id": options.entity, "action": "turn_on"})
 		return protocol.ToolCall{ID: callID, Name: "control_device", Arguments: args, ExpiresAt: expires}
+	}
+	writeTurn := func(w http.ResponseWriter, r *http.Request, out protocol.TurnResponse) {
+		if !options.streaming || r.Header.Get("Accept") != "text/event-stream" {
+			writeJSON(w, 200, out)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		if out.Reply != "" {
+			for i, part := range []string{"本轮", "完成"} {
+				b, _ := json.Marshal(protocol.StreamEvent{Type: "token", Content: part})
+				fmt.Fprintf(w, "event: message\ndata: %s\n\n", b)
+				w.(http.Flusher).Flush()
+				if i == 0 && options.streamGate != nil {
+					select {
+					case <-options.streamGate:
+					case <-r.Context().Done():
+						return
+					}
+				}
+				if options.streamFailure {
+					return
+				}
+			}
+		}
+		b, _ := json.Marshal(out)
+		fmt.Fprintf(w, "event: turn\ndata: %s\n\n", b)
+		w.(http.Flusher).Flush()
 	}
 	cloud := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
@@ -175,6 +205,18 @@ func newFixture(t *testing.T, options fixtureOptions) *fixture {
 			writeJSON(w, 200, map[string]string{"user_id": "test-user", "name": "Google Test User", "email": "test@example.invalid", "avatar_url": "https://example.invalid/test-avatar.png"})
 		case "/api/v1/memory/overview":
 			writeJSON(w, 200, map[string]int{"total_memories": 3, "recorded_days": 2})
+		case "/api/v1/chat/sessions":
+			if r.Method != "GET" || r.Header.Get("Authorization") != "Bearer test-cloud-access" || r.Header.Get("Cookie") != "" {
+				t.Error("session history did not use the isolated cloud account")
+			}
+			if r.URL.Query().Get("limit") != "20" {
+				t.Error("session page size was lost")
+			}
+			id, cursor := "recent-cloud-session", "older-cloud-cursor"
+			if r.URL.Query().Get("cursor") == cursor {
+				id, cursor = "older-cloud-session", ""
+			}
+			writeJSON(w, 200, map[string]any{"sessions": []map[string]string{{"session_id": id, "title": "云端对话"}}, "next_cursor": cursor})
 		case "/api/v1/settings":
 			writeJSON(w, 200, map[string]any{"auto_memory_enabled": true, "home_assistant_configured": false, "allowed_device_ids": []string{"light.cloud_only"}})
 		case "/api/v1/local/capabilities":
@@ -191,7 +233,7 @@ func newFixture(t *testing.T, options fixtureOptions) *fixture {
 			}
 			out := response()
 			out.ToolCalls = []protocol.ToolCall{tool()}
-			writeJSON(w, 200, out)
+			writeTurn(w, r, out)
 		case "/api/v1/local/turns/" + turnID + "/results":
 			count := f.results.Add(1)
 			if options.failResults {
@@ -211,7 +253,7 @@ func newFixture(t *testing.T, options fixtureOptions) *fixture {
 			} else {
 				out.Reply = "本轮完成"
 			}
-			writeJSON(w, 200, out)
+			writeTurn(w, r, out)
 		default:
 			t.Errorf("unexpected cloud request: %s", r.URL.Path)
 			http.NotFound(w, r)

@@ -31,6 +31,10 @@ func (s *Server) turn(ctx context.Context, w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) processTurn(ctx context.Context, sess *session, req turnInput) cachedTurn {
+	return s.processTurnStream(ctx, sess, req, nil)
+}
+
+func (s *Server) processTurnStream(ctx context.Context, sess *session, req turnInput, onEvent func(protocol.StreamEvent)) cachedTurn {
 	failure := func(status int, message string) cachedTurn {
 		return cachedTurn{status: status, response: map[string]string{"error": message}}
 	}
@@ -63,7 +67,7 @@ func (s *Server) processTurn(ctx context.Context, sess *session, req turnInput) 
 		delete(sess.requests, req.RequestID)
 		return failure(500, "无法保存本地操作记录，未发起新的操作")
 	}
-	out, err := s.runTurn(ctx, sess.account, req)
+	out, err := s.runTurnStream(ctx, sess.account, req, onEvent)
 	status := 200
 	var body any = out
 	if err != nil {
@@ -75,12 +79,16 @@ func (s *Server) processTurn(ctx context.Context, sess *session, req turnInput) 
 }
 
 func (s *Server) runTurn(ctx context.Context, account *cloud.Account, req turnInput) (*protocol.TurnResponse, error) {
+	return s.runTurnStream(ctx, account, req, nil)
+}
+
+func (s *Server) runTurnStream(ctx context.Context, account *cloud.Account, req turnInput, onEvent func(protocol.StreamEvent)) (*protocol.TurnResponse, error) {
 	if err := s.capabilities(ctx, account); err != nil {
 		return nil, err
 	}
 	var response protocol.TurnResponse
 	input := protocol.TurnRequest{ProtocolVersion: protocol.Version, RequestID: req.RequestID, SessionID: req.SessionID, Message: req.Message, Regenerate: req.Regenerate, ReplaceAssistantID: req.ReplaceAssistantID}
-	if err := s.cloud.Do(ctx, account, "POST", "/api/v1/local/turns", input, &response); err != nil {
+	if err := s.cloud.ExchangeTurn(ctx, account, "/api/v1/local/turns", input, &response, onEvent); err != nil {
 		return nil, err
 	}
 	sessionID, turnID := req.SessionID, ""
@@ -157,7 +165,7 @@ func (s *Server) runTurn(ctx context.Context, account *cloud.Account, req turnIn
 		}
 		next := protocol.ResultsRequest{ProtocolVersion: protocol.Version, RequestID: req.RequestID, SessionID: sessionID, Results: results}
 		response = protocol.TurnResponse{}
-		if err := s.cloud.Do(ctx, account, "POST", "/api/v1/local/turns/"+url.PathEscape(turnID)+"/results", next, &response); err != nil {
+		if err := s.cloud.ExchangeTurn(ctx, account, "/api/v1/local/turns/"+url.PathEscape(turnID)+"/results", next, &response, onEvent); err != nil {
 			return nil, err
 		}
 	}

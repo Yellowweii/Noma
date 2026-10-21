@@ -9,6 +9,13 @@ import (
 
 const Version = "1"
 
+// StreamEvent uses the same message events as the cloud chat UI.
+type StreamEvent struct {
+	Type    string            `json:"type"`
+	Content string            `json:"content,omitempty"`
+	Data    map[string]string `json:"data,omitempty"`
+}
+
 type ToolCall struct {
 	ID        string          `json:"id"`
 	Name      string          `json:"name"`

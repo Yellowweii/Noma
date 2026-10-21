@@ -791,6 +791,7 @@ export function AgentChatPage({
     const isFirstMessage = !isRegenerate && messages.length === 0;
     if (isFirstMessage) finishNewChatIntent();
     const assistantId = `stream-${Date.now()}`;
+    let currentAssistantId = assistantId;
     const assistantMsg: ChatMessage = {
       message_id: assistantId,
       session_id: sessionId,
@@ -862,12 +863,14 @@ export function AgentChatPage({
           }
           if (ev.type === "meta" && ev.data?.assistant_message_id) {
             const newAssistantId = ev.data.assistant_message_id;
+            const previousAssistantId = currentAssistantId;
+            currentAssistantId = newAssistantId;
             setStreamingMessageId((current) =>
-              current === assistantId ? newAssistantId : current,
+              current === previousAssistantId ? newAssistantId : current,
             );
             setMessages((prev) =>
               prev.map((m) =>
-                m.message_id === assistantId
+                m.message_id === previousAssistantId
                   ? { ...m, message_id: newAssistantId! }
                   : m,
               ),
@@ -877,9 +880,10 @@ export function AgentChatPage({
             updateSessionTitle(sessionId, ev.data.session_title);
           }
           if (ev.type === "token" && ev.content) {
+            const targetAssistantId = currentAssistantId;
             setMessages((prev) =>
               prev.map((m) =>
-                m.message_id === assistantId
+                m.message_id === targetAssistantId
                   ? { ...m, content: m.content + ev.content }
                   : m,
               ),
@@ -908,13 +912,13 @@ export function AgentChatPage({
       } else if (aborted) {
         setMessages((prev) =>
           prev.filter(
-            (m) => m.message_id !== assistantId || m.content.length > 0,
+            (m) => m.message_id !== currentAssistantId || m.content.length > 0,
           ),
         );
       } else {
         setMessages((prev) =>
           prev.map((m) =>
-            m.message_id === assistantId
+            m.message_id === currentAssistantId
               ? {
                   ...m,
                   content:

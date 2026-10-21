@@ -101,6 +101,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMoreSessions, setHasMoreSessions] = useState(false);
   const [sessionLoadError, setSessionLoadError] = useState("");
+  const [sessionReloadNonce, setSessionReloadNonce] = useState(0);
   const nextCursorRef = useRef<string | undefined>(undefined);
   const pageLoadingRef = useRef(false);
   const pageGenerationRef = useRef(0);
@@ -217,6 +218,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
 
     async function hydrateSessions() {
       setLoading(true);
+      setSessionLoadError("");
       if (!getAccessToken()) {
         const ok = await bootstrapSession();
         if (cancelled || !ok) {
@@ -285,17 +287,34 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
         pendingSessionsRef.current.set(pendingId, promise);
         bootstrapPendingIdRef.current = null;
       } catch {
-        // ignore bootstrap failures; UI keeps last known session state
+        if (!cancelled) setSessionLoadError("加载失败，点击重试");
       } finally {
         if (!cancelled) setLoading(false);
       }
     }
 
-    void init().catch(() => { if (!cancelled) setLoading(false); });
+    void init().catch(() => {
+      if (!cancelled) {
+        setLoading(false);
+        setSessionLoadError("加载失败，点击重试");
+      }
+    });
     return () => {
       cancelled = true;
     };
-  }, [pathname, router, migratePendingSession, applyActiveSessionId]);
+  }, [pathname, router, migratePendingSession, applyActiveSessionId, sessionReloadNonce]);
+
+  useEffect(() => {
+    const retryInitialLoad = () => {
+      if (!sessionsHydratedRef.current) setSessionReloadNonce((value) => value + 1);
+    };
+    window.addEventListener("focus", retryInitialLoad);
+    window.addEventListener("online", retryInitialLoad);
+    return () => {
+      window.removeEventListener("focus", retryInitialLoad);
+      window.removeEventListener("online", retryInitialLoad);
+    };
+  }, []);
 
   useEffect(() => {
     if (!sessions.length) return;
@@ -388,6 +407,10 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const loadMoreSessions = useCallback(async () => {
+    if (!sessionsHydratedRef.current) {
+      setSessionReloadNonce((value) => value + 1);
+      return;
+    }
     const cursor = nextCursorRef.current;
     if (!cursor || pageLoadingRef.current) return;
     pageLoadingRef.current = true;

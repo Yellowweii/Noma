@@ -194,6 +194,23 @@ func TestReusedChatSSEUsesLocalToolLoopAndReplayCache(t *testing.T) {
 	}
 }
 
+func TestSidebarHistoryUsesTheSameCloudPagesAndCursor(t *testing.T) {
+	f := newFixture(t, fixtureOptions{})
+	frontendCloudLogin(t, f)
+	for _, page := range []struct{ query, id string }{
+		{"?limit=20", "recent-cloud-session"},
+		{"?limit=20&cursor=older-cloud-cursor", "older-cloud-session"},
+	} {
+		status, body, _ := f.request(t, "GET", "/api/v1/chat/sessions"+page.query, nil)
+		if status != 200 || !strings.Contains(body, page.id) {
+			t.Fatal("cloud history page was lost", status, body)
+		}
+	}
+	if f.haRequests.Load() != 0 || f.turns.Load() != 0 {
+		t.Fatal("sidebar history accessed household tools")
+	}
+}
+
 func TestReusedHomeRoutesOnlyAccessLocalHA(t *testing.T) {
 	f := newFixture(t, fixtureOptions{})
 	frontendLogin(t, f)

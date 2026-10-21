@@ -271,21 +271,36 @@ func (s *Server) frontendSend(ctx context.Context, w http.ResponseWriter, r *htt
 		s.streamCloud(w, response)
 		return
 	}
-	result := s.processTurn(ctx, sess, turnInput{RequestID: input.RequestID, SessionID: sessionID, Message: input.Content, Regenerate: input.Regenerate, ReplaceAssistantID: input.ReplaceAssistantID})
-	if result.status != 200 {
-		writeJSON(w, result.status, result.response)
-		return
-	}
-	out := result.response.(*protocol.TurnResponse)
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("X-Accel-Buffering", "no")
+	started, receivedToken := false, false
 	emit := func(body any) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("X-Accel-Buffering", "no")
+		started = true
 		b, _ := json.Marshal(body)
 		_, _ = fmt.Fprintf(w, "event: message\ndata: %s\n\n", b)
 		if f, ok := w.(http.Flusher); ok {
 			f.Flush()
 		}
 	}
+	result := s.processTurnStream(ctx, sess, turnInput{RequestID: input.RequestID, SessionID: sessionID, Message: input.Content, Regenerate: input.Regenerate, ReplaceAssistantID: input.ReplaceAssistantID}, func(event protocol.StreamEvent) {
+		if event.Type == "token" && event.Content != "" {
+			receivedToken = true
+		}
+		emit(event)
+	})
+	if result.status != 200 {
+		if started {
+			b, _ := json.Marshal(result.response)
+			_, _ = fmt.Fprintf(w, "event: error\ndata: %s\n\n", b)
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+		} else {
+			writeJSON(w, result.status, result.response)
+		}
+		return
+	}
+	out := result.response.(*protocol.TurnResponse)
 	meta := map[string]string{}
 	if out.MessageID != "" {
 		meta["message_id"] = out.MessageID
@@ -296,7 +311,9 @@ func (s *Server) frontendSend(ctx context.Context, w http.ResponseWriter, r *htt
 	if len(meta) > 0 {
 		emit(map[string]any{"type": "meta", "data": meta})
 	}
-	emit(map[string]string{"type": "token", "content": out.Reply})
+	if !receivedToken {
+		emit(map[string]string{"type": "token", "content": out.Reply})
+	}
 	emit(map[string]string{"type": "done"})
 }
 

@@ -17,3 +17,5 @@ require("../src/lib/localId.test.cjs");
 require("../src/lib/auth.test.cjs");
 require("../src/lib/loginCompletion.test.cjs");
 require("../src/components/settings/HASettingsContent.test.cjs");
+require("../src/components/chat/AgentChatPage.test.cjs");
+require("../src/contexts/ChatSessionContext.test.cjs");
