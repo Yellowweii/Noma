@@ -1,226 +1,228 @@
 # Noma
 
-把 Noma 部署在家中的电脑、NAS 或服务器上，通过局域网连接 Home Assistant（下文简称 HA），就可以在 Noma 中查看设备状态，用对话或设备卡片控制家中的灯和开关。
+**English** | [简体中文](README.zh-CN.md)
 
-本指南按首次部署的顺序，带你完成启动、连接 HA 和设备控制。
+Deploy Noma on a computer, NAS, or server at home and connect it to Home Assistant (HA) over your local network. View device states and control your lights and switches through conversations or device cards.
 
-## 工作方式
+This guide walks you through your first deployment, HA connection, and device control.
+
+## How it works
 
 ```text
-电脑 / 手机浏览器 → 家中的 Noma
-                         ├─ 互联网 → Noma Cloud：登录、对话理解、记忆与会话
-                         └─ 局域网 → Home Assistant → 智能家居设备
+Computer / phone browser → Noma at home
+                             ├─ Internet → Noma Cloud: sign-in, conversation understanding, memory, and sessions
+                             └─ Local network → Home Assistant → Smart home devices
 ```
 
-Noma Cloud 理解你的指令，本地后端通过局域网向 HA 执行设备操作。HA 长期访问令牌保存在本地后端，不会发送给云端，也不会在保存后返回浏览器。对话理解所需的设备信息和工具执行结果会通过云端工具协议传递。
+Noma Cloud interprets your instructions, and the local backend performs device operations through HA over your local network. Your HA long-lived access token stays in the local backend. It is never sent to the cloud or returned to the browser after saving. Device information needed to understand conversations and tool execution results are exchanged through the cloud tool protocol.
 
-部署后仍需联网并登录 Noma 云端账号；Agent、模型、记忆和订阅由云端提供，无需自行准备模型 Key 或部署这些服务。
+An internet connection and a Noma cloud account are still required after deployment. The agent, models, memory, and subscriptions are provided by the cloud; you do not need to supply a model API key or deploy these services yourself.
 
-**当前指南支持本机和家庭局域网内使用。** 手机连上家中 Wi-Fi 后可访问 Noma；离家后使用移动网络，不能直接访问家中的局域网地址。当前版本未提供开箱即用的离家远程访问方案，也不需要为 HA 配置 FRPC / FRPS 或额外 Connector。
+**This guide currently covers access from the deployment machine and your home network.** Your phone can access Noma while connected to home Wi-Fi, but your home's local IP address is not directly accessible over mobile data when you are away. This version does not provide an out-of-the-box solution for access away from home. You do not need to configure FRPC / FRPS or an additional Connector for HA.
 
-## 开始前准备
+## Prerequisites
 
-- 已经运行的 HA，且目标设备已接入 HA，并能在 HA 页面中正常控制。
-- 一台能够持续运行 Docker 和 Docker Compose 的电脑、NAS 或服务器，用来部署 Noma。
-- 部署机器能够访问 HA 的局域网地址，也能联网访问 Noma Cloud。
-- 一个 Noma 云端账号。
+- A running HA instance with your target devices connected and working in the HA interface.
+- A computer, NAS, or server that can keep Docker and Docker Compose running to host Noma.
+- Network access from the deployment machine to both HA on your local network and Noma Cloud on the internet.
+- A Noma cloud account.
 
-下面使用两台设备的示例地址，请换成你自己的地址：
+The examples below use these two addresses. Replace them with your own:
 
-| 设备 | 示例地址 | 用途 |
+| Device | Example address | Purpose |
 | --- | --- | --- |
-| Noma 部署机器 | `192.168.1.50` | 电脑、手机访问 Noma 的入口 |
-| Home Assistant | `192.168.1.100:8123` | 在 Noma 设置页填写的 HA 地址 |
+| Noma host | `192.168.1.50` | Address used by computers and phones to access Noma |
+| Home Assistant | `192.168.1.100:8123` | HA address entered in Noma settings |
 
-两者可以部署在同一台机器上。建议在路由器中为部署机器和 HA 保留固定的局域网 IP，避免地址变化后无法连接。
+Both services can run on the same machine. Reserve local IP addresses for the Noma host and HA in your router to avoid connection failures when addresses change.
 
-## 1. 启动 Noma
+## 1. Start Noma
 
-下载项目后，在包含 `compose.yaml` 的项目根目录运行：
+After downloading the project, run this command from the project root containing `compose.yaml`:
 
 ```bash
 docker compose up -d --build
 ```
 
-首次启动需要下载镜像、安装依赖并构建，请等待服务启动。可以查看服务状态和启动日志：
+The first startup downloads images, installs dependencies, and builds the project. Wait for the services to start. Check their status and startup logs with:
 
 ```bash
 docker compose ps
 docker compose logs --tail=100
 ```
 
-在部署机器的浏览器打开 [http://localhost:3100](http://localhost:3100)，登录 Noma 云端账号。无需创建 `.env`，也无需生成额外的本地访问密钥。
+On the deployment machine, open [http://localhost:3100](http://localhost:3100) in a browser and sign in to your Noma cloud account. There is no need to create an `.env` file or generate an additional local access key.
 
-默认只允许部署机器自身访问。先在这台机器上完成 HA 连接；如需手机访问，再按第 5 步开放局域网入口。
+By default, only the deployment machine can access Noma. Connect HA on that machine first, then follow step 5 to enable access from your phone over the local network.
 
-## 2. 获取 HA 长期访问令牌
+## 2. Get an HA long-lived access token
 
-1. 打开自己的 HA 页面，例如 `http://192.168.1.100:8123`，登录 HA 账号。
-2. 进入 **个人资料 → 安全 → 长期访问令牌**。
-3. 点击“创建令牌”，名称可以填写 `Noma`。
-4. 复制生成的完整令牌，供下一步使用。
+1. Open your HA instance, for example `http://192.168.1.100:8123`, and sign in to your HA account.
+2. Go to **Profile → Security → Long-lived access tokens**.
+3. Select **Create token** and give it a name such as `Noma`.
+4. Copy the entire generated token for the next step.
 
-令牌创建入口和保存说明可参考 [HA 官方认证文档](https://developers.home-assistant.io/docs/auth_api/#long-lived-access-token)。HA 不保存可再次查看的令牌原文，请妥善保管；遗失后可撤销旧令牌并重新创建。不要把令牌发到聊天窗口、截图、日志或 Git 仓库中。
+See the [official HA authentication documentation](https://developers.home-assistant.io/docs/auth_api/#long-lived-access-token) for token creation and storage details. HA does not retain a token's original value for later viewing. Keep it safe; if you lose it, revoke the old token and create a new one. Do not put the token in chats, screenshots, logs, or Git repositories.
 
-## 3. 在 Noma 中连接 HA
+## 3. Connect HA in Noma
 
-登录本地 Noma 页面后：
+After signing in to your local Noma instance:
 
-1. 打开 **设置 → Home Assistant**。
-2. 将令牌粘贴到“Home Assistant 长期访问令牌”输入框。
-3. 展开 **自定义 Home Assistant 地址**，填写本地后端能够访问的 HA 地址，例如 `http://192.168.1.100:8123`。
-4. 点击 **连接**。成功后，页面会显示“已连接”和上次连接时间，还可以设置家庭名称。
+1. Open **Settings → Home Assistant**.
+2. Paste the token into the **Home Assistant long-lived access token** field.
+3. Expand **Custom Home Assistant address** and enter an HA address reachable from the local backend, such as `http://192.168.1.100:8123`.
+4. Select **Connect**. Once connected, the page shows the connection status and last connection time. You can also set a home name.
 
-**Docker 部署时，通常需要修改默认 HA 地址。** 默认的 `http://localhost:8123` 指向 Noma 后端容器自身，不会自动指向宿主机或其他设备上的 HA。
+**Docker deployments usually need a different HA address from the default.** The default `http://localhost:8123` points to the Noma backend container itself, not automatically to the host or to HA on another device.
 
-| HA 所在位置 | 建议填写 |
+| HA location | Suggested address |
 | --- | --- |
-| 另一台局域网设备 | `http://<HA 的局域网 IP>:8123` |
-| 与 Noma 同一台宿主机 | 优先使用宿主机的局域网 IP；也可尝试 `http://host.docker.internal:8123`，前提是 HA 监听的接口允许容器访问 |
+| Another device on the local network | `http://<HA local IP>:8123` |
+| The same host as Noma | Prefer the host's local IP. You can also try `http://host.docker.internal:8123`, provided HA listens on an interface accessible from the container. |
 
-如果 HA 使用其他端口或 HTTPS，请填写实际地址。地址只包含协议、主机和端口，不要附加 `/api`、页面路径、用户名、密码或查询参数。
+If HA uses another port or HTTPS, enter its actual address. Include only the scheme, host, and port; do not append `/api`, page paths, usernames, passwords, or query parameters.
 
-页面连接默认授权 HA 的全部实体，包括以后新增的实体；实际控制仍受服务与参数白名单限制。连接同时启用当前浏览器的设备访问权限。其他浏览器或家庭成员需分别登录并点击“连接”，已保存的令牌可留空沿用。
+Connecting through the page authorizes all HA entities by default, including entities added later. Device control remains restricted by service and parameter allowlists. Connecting also enables device access for the current browser. Other browsers or household members must sign in and select **Connect** separately. Leave the token field empty to reuse the saved token.
 
-连接配置保存后立即生效，无需重启。令牌由页面一次性提交给同源本地后端；保存后页面不会读取或回显令牌。
+Saved connection settings take effect immediately without a restart. The page submits the token once to the same-origin local backend; after saving, it does not retrieve or display the token.
 
-## 4. 验证并控制智能家居
+## 4. Verify and control your devices
 
-先打开 **家** 页面，确认能看到设备及其状态。房间分组来自 HA 的区域设置；未分配区域的设备会单独分组。
+First, open the **Home** page and confirm that devices and their states appear. Room groups come from HA area assignments; devices without an area appear in a separate group.
 
-选择一盏方便观察的灯或一个开关进行验证：
+Choose a light or switch whose state you can easily observe:
 
-1. 在设备卡片上操作一次开关，确认真实设备状态发生变化。
-2. 进入对话页，尝试发送“查看客厅灯的状态”或“打开客厅灯”。请使用自己 HA 中的设备名称。
-3. 核对 Noma 回复、页面状态和真实设备状态是否一致。
+1. Toggle it once using its device card and confirm that the physical device changes state.
+2. Open the conversation page and try “Check the living room light's status” or “Turn on the living room light.” Use the device names from your own HA instance.
+3. Check that Noma's response, the page state, and the physical device state agree.
 
-当前支持的操作：
+Currently supported operations:
 
-| HA 实体类型 | 可执行操作 |
+| HA entity type | Available operations |
 | --- | --- |
-| 灯光 `light` | 开、关；设备支持时可设置亮度、RGB / RGBW / RGBWW、白光和色温 |
-| 开关 `switch` | 开、关 |
-| 辅助开关 `input_boolean` | 开、关 |
-| 其他实体 | 授权范围内的状态读取，暂不支持控制 |
+| Light `light` | Turn on/off; adjust brightness, RGB / RGBW / RGBWW, white light, and color temperature when supported by the device |
+| Switch `switch` | Turn on/off |
+| Input boolean `input_boolean` | Turn on/off |
+| Other entities | Read states within the authorized scope; control is not currently supported |
 
-页面按设备实际支持的操作显示按钮。“家”页面主要展示家庭设备和常用环境 / 安防传感器，会过滤诊断、备份、手机遥测等实体，也不会把功率、电量等附属读数单独显示为设备卡片。这些展示规则不会修改 HA 中的实体或授权范围。
+The page shows controls according to each device's capabilities. The Home page mainly displays household devices and common environmental / security sensors. It filters out entities such as diagnostics, backups, and phone telemetry, and does not show supplementary readings such as power or battery level as separate device cards. These display rules do not modify HA entities or the authorization scope.
 
-**设备控制超时表示结果未知。** 先查看真实设备或 HA 中的最新状态，再决定是否重新操作；本地执行器不会自动重试写操作。
+**A device control timeout means the outcome is unknown.** Check the physical device or its latest state in HA before deciding whether to try again. The local executor does not automatically retry write operations.
 
-## 5. 让家中手机或其他电脑访问
+## 5. Allow access from phones or other computers at home
 
-默认端口映射是 `127.0.0.1:3100:3000`，只能在部署机器上打开。如果需要让家中其他设备访问，编辑 `compose.yaml` 中 `noma-local` 服务的 `ports`：
+The default port mapping is `127.0.0.1:3100:3000`, which only allows access from the deployment machine. To allow other devices at home to connect, edit `ports` for the `noma-local` service in `compose.yaml`:
 
 ```yaml
 ports:
   - "192.168.1.50:3100:3000"
 ```
 
-把 `192.168.1.50` 替换为部署机器的实际局域网 IP。保存后，在项目根目录重新运行：
+Replace `192.168.1.50` with the deployment machine's actual local IP. Save the file, then run this command again from the project root:
 
 ```bash
 docker compose up -d
 ```
 
-让手机连接同一家庭局域网，然后在浏览器打开 `http://192.168.1.50:3100`，登录 Noma 账号，并在 HA 设置中点击“连接”。**手机上的 `localhost` 指手机自身，不能用它访问部署机器。**
+Connect your phone to the same home network, open `http://192.168.1.50:3100` in its browser, sign in to Noma, and select **Connect** in the HA settings. **On a phone, `localhost` refers to the phone itself and cannot be used to access the deployment machine.**
 
-若无法打开，请检查宿主机防火墙是否允许家庭局域网访问 TCP 3100，以及手机是否连接了会隔离设备的访客 Wi-Fi。当前入口只接受 `localhost` 或 IP 地址，请使用部署机器的 IP 访问。
+If the page does not open, check whether the host firewall allows TCP 3100 from your home network and whether your phone is on a guest Wi-Fi network that isolates devices. The current entry point accepts only `localhost` or IP addresses, so use the deployment machine's IP address.
 
-该实例面向受信任家庭成员；能访问实例并登录的用户，都可以自行启用实例中已配置的 HA 设备范围。不要把这个端口直接映射到公网。局域网 HTTP 会明文传输登录信息、首次提交的 HA 令牌和对话，长期使用建议配置本地 HTTPS。HTTPS 代理需保留原始 Host，并在后端配置中设置 `secure_cookie: true`；手机录音等浏览器能力也需要安全上下文，当前语音流程尚未完成联调。
+This instance is intended for trusted household members. Anyone who can reach the instance and sign in can enable access to its configured HA device scope. Do not expose this port directly to the public internet. HTTP on the local network transmits login information, the initial HA token submission, and conversations in plaintext. Local HTTPS is recommended for ongoing use. An HTTPS proxy must preserve the original Host header, and the backend configuration must set `secure_cookie: true`. Browser features such as microphone recording on phones also require a secure context; the current voice workflow has not yet completed end-to-end integration testing.
 
-## 日常维护与配置保存
+## Maintenance and persistent configuration
 
-Noma 和 HA 都需要保持运行；部署机器关机或休眠后，无法通过该实例控制设备。
+Both Noma and HA must stay running. If the deployment machine shuts down or sleeps, you cannot control devices through this instance.
 
 ```bash
-# 停止服务，保留配置和登录状态
+# Stop services while keeping configuration and sign-in state
 docker compose stop
 
-# 再次启动
+# Start again
 docker compose up -d
 
-# 更新项目代码后重新构建并启动
+# Rebuild and start after updating the project code
 docker compose up -d --build
 ```
 
-Docker 使用 `noma_local_data` 命名卷（实际卷名通常带项目名前缀）保存后端数据：
+Docker stores backend data in the `noma_local_data` named volume (the actual volume name usually includes a project prefix):
 
-- `/data/local.json`：HA 地址、令牌、实体授权范围和家庭名称等配置。
-- `/data/sessions/`：本地登录会话及云端凭证。
+- `/data/local.json`: HA address, token, authorized entities, home name, and other settings.
+- `/data/sessions/`: local sign-in sessions and cloud credentials.
 
-普通重启保留配置和有效登录。登录会话空闲有效期为 30 天，使用时续期；退出登录会撤销当前浏览器的设备授权，下次登录需重新点击“连接”，无需重填已保存的令牌。HA 地址、令牌或授权范围改变后，其他浏览器也需重新连接。
+Normal restarts preserve configuration and valid sessions. Sign-in sessions have a 30-day idle lifetime, renewed on use. Signing out revokes device access for the current browser. After signing in again, select **Connect** again; you do not need to re-enter the saved token. Changes to the HA address, token, or authorized entities also require other browsers to reconnect.
 
-不要删除数据卷，除非你准备重新配置。备份应妥善保护整个数据卷，其中包含敏感凭证；不要提交或公开分享配置、会话目录和备份。
+Do not delete the data volume unless you intend to configure the instance again. Protect backups of the entire volume because they contain sensitive credentials. Do not commit or publicly share configuration files, session directories, or backups.
 
-### 可选：手动限制可访问的实体
+### Optional: manually restrict accessible entities
 
-通常通过页面连接即可。需要限制实体范围时，可以手动编辑本地后端的 `data/local.json`；Docker 中对应数据卷内的 `/data/local.json`。保留现有其他字段，将以下示例字段合并到配置中：
+Connecting through the page is usually sufficient. To restrict the entity scope, manually edit the local backend's `data/local.json`, which corresponds to `/data/local.json` in the Docker data volume. Keep the existing fields and merge the following example fields into the configuration:
 
 ```json
 {
   "ha_url": "http://192.168.1.100:8123",
-  "ha_token": "<你的 HA 长期访问令牌>",
+  "ha_token": "<your HA long-lived access token>",
   "allowed_entities": ["light.living_room", "switch.desk"]
 }
 ```
 
-示例实体 ID 需换成 HA 中的真实实体 ID。`["*"]` 表示全部实体，`[]` 表示不授权任何实体。手动修改后运行 `docker compose restart noma-local` 生效；**从页面重新点击“连接”会恢复全部实体模式**。
+Replace the example entity IDs with actual IDs from HA. `["*"]` authorizes all entities; `[]` authorizes none. After manual edits, run `docker compose restart noma-local` to apply them. **Selecting Connect on the page again restores access to all entities.**
 
-Docker 不会自动读取项目目录下的 `data/local.json`。如选择在宿主机准备文件，请确认内容完整，再复制到容器并重启：
+Docker does not automatically read `data/local.json` from the project directory. If you prepare a file on the host, make sure it contains the complete configuration, then copy it into the container and restart:
 
 ```bash
 docker compose cp data/local.json noma-local:/data/local.json
 docker compose restart noma-local
 ```
 
-高级配置还支持 `listen`、`cloud_url`、`web_url` 和 `secure_cookie`。默认云端是 `https://noma-ai.cloud`。Compose 已设置容器内部监听和前端路由；调整局域网入口时修改端口映射即可。
+Advanced configuration also supports `listen`, `cloud_url`, `web_url`, and `secure_cookie`. The default cloud endpoint is `https://noma-ai.cloud`. Compose already configures the container's internal listening address and frontend routing. To change local network access, adjust the port mapping.
 
-## 常见问题
+## Troubleshooting
 
-| 问题 | 检查方式 |
+| Problem | What to check |
 | --- | --- |
-| 本机打不开 Noma | 确认 Docker 正在运行，使用 `docker compose ps` 和 `docker compose logs --tail=100` 检查启动情况，确认端口 3100 未被其他程序占用。 |
-| Noma 打得开，但连接 HA 失败 | 检查 HA 地址、端口、令牌和 HA 服务状态。尤其确认没有把 Docker 中的 `localhost` 当成宿主机；部署机器或容器应能访问该 HA 地址。 |
-| 手机打不开 Noma | 按第 5 步修改端口映射，使用部署机器的 IP；检查防火墙和访客网络隔离。 |
-| 手机切到移动网络后无法访问 | 局域网 IP 只供家中网络访问，当前版本未提供离家远程访问方案。 |
-| 能聊天，但无法控制设备 | 在当前浏览器的“设置 → Home Assistant”中点击“连接”，确认已授权，并核对设备类型是否在支持范围内。 |
-| HA 有实体，“家”页面却没显示 | 页面会过滤部分非家庭设备和附属读数；检查实体类型及 HA 区域分配。 |
-| 控制请求超时 | 操作可能已经执行，先确认真实设备状态，再决定是否重试。 |
-| 重启后要求重新登录或连接 | 检查数据卷是否保留；云端凭证失效需重新登录，设备配置变化或主动退出后需重新连接。 |
-| 无法下载 Node 镜像 | 可临时设置 `NOMA_DEV_NODE_IMAGE` 为可用的兼容 Node 镜像后重新构建。 |
+| Noma does not open on the host | Confirm Docker is running. Check `docker compose ps` and `docker compose logs --tail=100`, and make sure another program is not using port 3100. |
+| Noma opens, but HA will not connect | Check the HA address, port, token, and service status. In particular, do not treat `localhost` inside Docker as the host. The deployment machine or container must be able to reach the HA address. |
+| Noma does not open on a phone | Change the port mapping as described in step 5 and use the host's IP. Check the firewall and guest network isolation. |
+| Access stops working when the phone switches to mobile data | Local IP addresses are accessible only within your home network. This version does not provide a solution for access away from home. |
+| Chat works, but device control does not | Select **Connect** under **Settings → Home Assistant** in the current browser, confirm authorization, and check whether the device type is supported. |
+| An HA entity does not appear on the Home page | The page filters out some non-household entities and supplementary readings. Check the entity type and HA area assignment. |
+| A control request times out | The operation may already have executed. Check the physical device's state before deciding whether to retry. |
+| Sign-in or connection is required again after a restart | Check that the data volume was preserved. Expired cloud credentials require signing in again; device configuration changes or an explicit sign-out require reconnecting. |
+| The Node image cannot be downloaded | Temporarily set `NOMA_DEV_NODE_IMAGE` to an available compatible Node image, then rebuild. |
 
-## 开发者补充
+## Developer notes
 
-本项目仅包含 Web UI、云端账号代理、远程工具协议适配和局域网 HA 执行器。界面沿用 Noma 原有页面与交互，本地适配集中在同源 API、本地会话和 HA 连接。
+This project contains only the Web UI, a cloud account proxy, remote tool protocol adaptation, and a local-network HA executor. The interface reuses Noma's existing pages and interactions. Local adaptations focus on same-origin APIs, local sessions, and the HA connection.
 
-当前 Docker 配置使用开发模式：前端运行 `next dev`，后端监听源码变更并在编译成功后重启网关。服务重启保留数据卷中的配置和有效会话。
+The current Docker configuration uses development mode: the frontend runs `next dev`, while the backend watches source changes and restarts the gateway after successful compilation. Service restarts preserve configuration and valid sessions in the data volume.
 
-原生开发需要 Go 1.25+、Node.js 22.13+。在两个终端分别运行：
+Native development requires Go 1.25+ and Node.js 22.13+. Run the following in two separate terminals:
 
 ```bash
-# 终端 1：启动前端
+# Terminal 1: start the frontend
 cd noma-web
 npm ci
 npm run dev
 ```
 
 ```bash
-# 终端 2：在项目根目录启动网关
+# Terminal 2: start the gateway from the project root
 go run ./cmd/noma-local
 ```
 
-访问网关 [http://localhost:3100](http://localhost:3100)。前端开发端口 3001 仅供网关访问，直接打开不具备本地 API 路由。原生后端默认读取 `data/local.json`；仅当 HA 与后端处于同一运行环境时，默认 HA 地址 `http://localhost:8123` 才可直接使用。
+Access the gateway at [http://localhost:3100](http://localhost:3100). Frontend development port 3001 is for the gateway; accessing it directly does not provide local API routing. The native backend reads `data/local.json` by default. The default HA address, `http://localhost:8123`, works directly only when HA and the backend share the same runtime environment.
 
-现有环境变量均为可选项，无需创建 `.env`：
+All existing environment variables are optional. No `.env` file is required:
 
-| 环境变量 | 用途 |
+| Environment variable | Purpose |
 | --- | --- |
-| `NOMA_LOCAL_ADDR` | 覆盖后端监听地址；原生默认为 `127.0.0.1:3100`，Compose 已设置容器内部监听地址 |
-| `NOMA_WEB_URL` | 覆盖前端服务地址；Compose 已设置服务间路由 |
-| `NOMA_HA_URL` | 覆盖默认 HA 地址；配置文件或页面明确保存的地址优先 |
-| `NOMA_DEV_NODE_IMAGE` | 覆盖 Docker 前端构建使用的 Node 镜像 |
+| `NOMA_LOCAL_ADDR` | Override the backend listening address. The native default is `127.0.0.1:3100`; Compose sets the internal container listening address. |
+| `NOMA_WEB_URL` | Override the frontend service address. Compose sets routing between services. |
+| `NOMA_HA_URL` | Override the default HA address. An address explicitly saved in the configuration file or through the page takes precedence. |
+| `NOMA_DEV_NODE_IMAGE` | Override the Node image used for the Docker frontend build. |
 
-回归检查：
+Regression checks:
 
 ```bash
 go test ./...
@@ -231,4 +233,4 @@ npm test
 npm run build
 ```
 
-自动测试不会发送真实验证码或控制真实设备。
+Automated tests do not send real verification codes or control real devices.
